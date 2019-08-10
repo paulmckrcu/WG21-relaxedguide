@@ -1,0 +1,253 @@
+\documentclass{article}
+
+% standard packages
+
+% A more pleasant font
+\usepackage[T1]{fontenc} % use postscript type 1 fonts
+\usepackage{textcomp} % use symbols in TS1 encoding
+\usepackage{mathptmx,helvet,courier} % use nice, standard fonts for roman, sans and monospace respectively
+
+% Improves the text layout
+\usepackage{microtype}
+
+\usepackage{lscape}
+\usepackage{fancyhdr}
+\usepackage{epsfig}
+\usepackage{subfigure}
+\usepackage{url}
+\usepackage{graphics}
+\usepackage{enumerate}
+\usepackage{ifthen}
+\usepackage{float}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily}
+% \usepackage[strings]{underscore}
+% \usepackage{underscore}
+\usepackage[bookmarks=true,bookmarksnumbered=true,pdfborder={0 0 0}]{hyperref}
+
+\lstset{
+  literate={\_}{}{0\discretionary{\_}{}{\_}}%
+}
+
+\DeclareUrlCommand\email{}
+
+\pagestyle{fancy}
+\rhead{}
+
+\newfloat{listing}{tbp}{lol}
+\floatname{listing}{Listing}
+
+\begin{document}
+\title{A Relaxed Guide to \co{memory_order_relaxed}}
+
+\newcommand{\co}[1]{\lstinline[breaklines=yes,breakatwhitespace=yes]{#1}}
+
+\author{
+Hans Boehm\\\email{hboehm@google.com} \and
+Paul E.~McKenney\\\email{paulmck@kernel.org} \and
+The Indefatigible TBD
+}
+\date{August 9, 2019}
+\maketitle{}
+
+\begin{abstract}
+	The out-of-thin-air (OOTA) and read-from-untaken-branch (RFUB)
+	properties of the specification of \co{memory_order_relaxed}
+	have resulted in considerable consternation over the years.
+	Although there are no known instances of full-blown OOTA
+	behavior, and no known useful algorithms resulting in RFUB
+	behavior, even the theoretical possibility of these properties
+	severely complicate automated analysis of large C and C++ code
+	bases.
+	Thus far, attempts to eliminate OOTA and RFUB properties from
+	the memory model have resulted in otherwise needless added
+	overheads on weakly ordered systems on the one hand or
+	excessive implementation complexity on the other.
+	However, \co{memory_order_relaxed} never was intended to be used
+	in arbitrary code, but rather as a part of deliberate application
+	of specific concurrency designs.
+	This paper forms an initial catalog of patterns underlying such
+	designs.
+\end{abstract}
+
+\section{OOTA and RFUB Background}
+\label{sec:OOTA and RFUB Background}
+
+@@@
+
+Loads of citations and summaries.
+
+Heuristics, such as single-direction data flow.
+
+\section{Relaxed Design Patterns}
+\label{sec:Relaxed Design Patterns}
+
+Many taken from Hans's \co{memory-model-design} posting on
+September 4, 2018.\footnote{
+	Message-ID: \co{<CAMOCf+jchGw6DeE2NyCJA3wfFbNH-WFn59JruZPSWt9_jPW9NQ@mail.gmail.com>}.}
+
+\subsection{Shared Fences}
+\label{sec:Shared Fences}
+
+The \co{std::atomic_thread_fence()} function can be used to order
+multiple sets of accesses, for example, by replacing a series of
+acquire loads with relaxed loads followed by an
+\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
+or a series of release stores with an
+\co{std::atomic_thread_fence(memory_order_release)} followed by
+a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+
+In this use case, OOTA and RFUB behaviors are ruled out by the semantics
+of \co{std::atomic_thread_fence()}.
+
+\subsection{Initial Load for CAS}
+\label{sec:Initial Load for CAS}
+
+The \co{std::atomic_compare_exchange_*()} family of read-modify-write
+CAS operations are typically used in a loop, and often require an initial
+load prior to the first pass through that loop.
+For non-relaxed CAS operations, this initial load can typically be a
+relaxed load, with the CAS operation's ordering preventing OOTA and RFUB
+behaviors.
+Relaxed CAS operations need to be part of some other design pattern if they
+are to be OOTA/RFUB-free in conjunction with an initial relaxed load.
+One common design pattern is the single-location data structure discussed in
+Section~\ref{sec:Single-Location Data Structures}.
+
+\subsection{Owner Field for Re-Entrant Mutex}
+\label{sec:Owner Field for Re-Entrant Mutex}
+
+A re-entrant exclusive mutex must track its owner in order to avoid
+self-deadlock when the owner re-acquires the mutex it already holds.
+This owner field is updated only while the lock is held, and its value
+is used only to compare for equality to the current thread's ID.
+Other threads can access the owner concurrently with the owner's
+update, so the owner field must be an atomic in order to avoid data races.
+
+However, the only time that the owner field can be equal to the thread ID
+is when that thread carried out the last update to the owner field and
+still holds the mutex.
+No other thread is allowed to write to the owner field while the lock
+is held, so it is impossible to form the cycles required for OOTA or
+RFUB behavior to manifest.\footnote{
+	In fact, the accesses to the owner field and the mutex's acquire
+	and release operations will be sequentially consistent.}
+Therefore, both the reads from and the writes to the owner field
+may use \co{memory_order_relaxed}.
+
+More generally, if an object is written only while a given mutex is
+held, all accesses to that object may be relaxed without the possibility
+of OOTA or RFUB behaviors.
+
+Even more generally, if an object must be atomic for other reasons, then
+any non-racing read or write can be a relaxed access.\footnote{
+	This covers case~\#8 in Hans's September 4, 2019 email.}
+
+\subsection{Statistical Counters}
+\label{sec:Statistical Counters}
+
+Statistical counters have concurrent updates and reads, and thus must
+use atomics.
+However, the concurrent reads are modeled as returning approximate results
+(for example, for monitoring or debugging),
+and can in fact be modeled as sequentially consistent approximate
+operations.
+Furthermore, data flow is almost always unidirectional, proceeding from
+the updater responding to an event and flowing to the reader, precluding
+the cycles required for OOTA or RFUB behavior to manifest.
+
+Exact values are sometimes obtained from statistical counters in
+stop-the-world situations, such as checking for consistent results
+at the end of a stress test or benchmarking run.
+In these cases, OOTA and RFUB behaviors are avoided due to the
+single-threaded nature of the consistency checks.
+
+\subsection{Single-Location Data Structures}
+\label{sec:Single-Location Data Structures}
+
+Relaxed atomic operations provide sequentially consistent access to
+a single object.
+This means that data structures that fit into a single object can
+be accessed with relaxed atomics with no possibility of OOTA or
+RFUB behavior.
+
+Note well that a pair of single-location data structures might well
+interact in a way that could raise the spectre of OOTA or RFUB.
+
+\subsection{Single-Threaded Processing Phases}
+\label{sec:Single-Threaded Processing Phases}
+
+Relaxed atomic operations also provide sequentially consistent access
+to multiple objects from a single thread.
+This allows relaxed atomic operations to be used during the single-threaded
+initialization and cleanup phases of a concurrent program.
+
+\subsection{One-Way Memory Allocation}
+\label{sec:One-Way Memory Allocation}
+
+``For allocating fresh memory that's never deallocated, or deallocated
+with a heavy weight one-sided mechanism.''
+
+\emph{[ How do we characterize this to avoid the infamous RFUB example?  ]}
+
+\subsection{Sequence Locking}
+\label{sec:Sequence Locking}
+
+The accesses within a sequence-locking read-side critical section can
+used relaxed loads because any concurrency with the corresponding
+update will result in a retry, thus discarding the loaded values.
+This prevents an OOTA or RFUB cycle.
+
+\subsection{Java Hashcode Access}
+\label{sec:Java Hashcode Access}
+
+\emph{[ Does this apply to C or C++? ]}
+
+\subsection{Atomic Reference-Count Updates}
+\label{sec:Atomic Reference-Count Updates}
+
+In certain reference-count use cases, the ordering of the incremeents and
+decrements is irrelevant.
+One common case is where it is only legal to increment the reference
+count when you already have a reference, in which case the count cannot
+possibly decrease to zero in the meantime.
+Because only the one-to-zero transition requires ordering, reference-count
+increments can be relaxed in cases where another reference is guaranteed
+to be held throughout.
+
+\subsection{Relaxed Consumption}
+\label{sec:Relaxed Consumption}
+
+In cases where a full-speed \co{memory_order_consume} is needed on a
+weak-memory system and where the developers are willing to live within
+strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
+\co{memory_order_relaxed} may be used to head dependency chains.
+
+Note well that this use case is outside of the current standard.
+
+\subsection{Chaotic Relaxation}
+\label{sec:Chaotic Relaxation}
+
+There are a number of iterative numerical algorithms for which unsynchronized
+access does not slow convergence as much as waits for barrier synchronization.
+These algorithms can use relaxed loads and stores to update the numerical
+data~\cite{Andrews91textbook}.
+
+In theory, these algorithms are subject to OOTA and RFUB behaviors, however,
+in practice, current implementations avoid such behaviors.
+
+\section{Use of Relaxed Design Patterns}
+\label{sec:Use of Relaxed Design Patterns}
+
+@@@
+
+\section{Concluding Remarks}
+\label{sec:Concluding Remarks}
+
+@@@
+
+
+\bibliographystyle{plain}
+\bibliography{bib/RCU,bib/WFS,bib/hw,bib/os,bib/parallelsys,bib/patterns,bib/perfmeas,bib/refs,bib/syncrefs,bib/search,bib/swtools,bib/realtime,bib/TM,bib/standards}
+
+\end{document}
