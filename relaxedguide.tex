@@ -198,7 +198,16 @@ of \co{std::atomic_thread_fence()}.
 ``For allocating fresh memory that's never deallocated, or deallocated
 with a heavy weight one-sided mechanism.''
 
-\emph{[ How do we characterize this to avoid the infamous RFUB example?  ]}
+\emph{[ How do we characterize this to avoid the infamous RFUB example?
+	Here is my first cut: ]}
+
+Note that memory allocation and pointer publication are separate
+design patterns, and that publication of a pointer to other threads
+requires at least \co{memory_order_relaxed} in order to ensure that
+the allocation happens before the publication, even if the allocated
+memory remains uninitialized.
+
+\emph{[ @@@ Add citation for RFUB example. ]}
 
 \subsection{Sequence Locking}
 \label{sec:Sequence Locking}
