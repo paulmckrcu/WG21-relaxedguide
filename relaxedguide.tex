@@ -111,7 +111,7 @@ Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
 \subsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
 
-\emph{Note:} There is some debate on this use case.
+\emph{Note:} There is some debate on this design pattern.
 
 A re-entrant exclusive mutex must track its owner in order to avoid
 self-deadlock when the owner re-acquires the mutex it already holds.
@@ -189,7 +189,7 @@ or a series of release stores with an
 \co{std::atomic_thread_fence(memory_order_release)} followed by
 a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
 
-In this use case, OOTA and RFUB behaviors are ruled out by the semantics
+In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
 of \co{std::atomic_thread_fence()}.
 
 \subsection{One-Way Memory Allocation}
@@ -233,7 +233,7 @@ weak-memory system and where the developers are willing to live within
 strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
 \co{memory_order_relaxed} may be used to head dependency chains.
 
-Note well that this use case is outside of the current standard.
+Note well that this design pattern is outside of the current standard.
 
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
@@ -249,7 +249,7 @@ in practice, current implementations avoid such behaviors.
 \section{Marking of Relaxed Design Patterns}
 \label{sec:Marking of Relaxed Design Patterns}
 
-It is currently believed that these use cases must be explicitly marked
+It is currently believed that these design patterns must be explicitly marked
 in order for code reviewers and automatic verifiers to recognize them
 and validate their usage.
 Here are some candidate marking strategies that have been discussed
@@ -257,23 +257,24 @@ within the C++ standards committee:
 
 \begin{enumerate}
 \item	Create new \co{memory_order} \co{enum} members for each new
-	use case.
+	design pattern.
 	This has the benefit of calling out the pattern in an unmistakable
 	way that is visible to the compiler, but requires that each
-	new use case be standardized.
+	new design pattern be standardized.
 	It also does not support the case where a given access plays a
-	role in multiple overlapping use cases.
-\item	Use structured comments to mark each use case.
+	role in multiple overlapping design patterns.
+\item	Use structured comments to mark each design pattern.
 	This avoids the time delays and administrative overhead inherent
 	in standardization, and could potentially allow multiple comments
 	to handle a given access that plays a role in multiple overlapping
-	use cases.
-\item	Define C++ \co{template} types for each use case.
+	design patterns.
+\item	Define C++ \co{template} types for each design pattern.
 	This is an excellent idea where it applies, as it might well
 	for the statistical counters discussed in
 	Section~\ref{sec:Statistical Counters}.
 	However, we have reason to doubt that \co{template} types can
-	be reasonably created for all possible use cases.
+	be reasonably created for all possible relaxed-access design
+	patterns.
 \end{enumerate}
 
 More ideation and discussion is needed on this topic.
