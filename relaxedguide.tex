@@ -55,10 +55,9 @@ The Indefatigible TBD
 	properties of the specification of \co{memory_order_relaxed}
 	have resulted in considerable consternation over the years.
 	Although there are no known instances of full-blown OOTA
-	behavior, and no known useful algorithms resulting in RFUB
-	behavior, even the theoretical possibility of these properties
-	severely complicate automated analysis of large C and C++ code
-	bases.
+	behavior, and no known RFUB-induced failures of production code,
+	the theoretical possibility of these properties severely
+	complicate automated analysis of large C and C++ code bases.
 	Thus far, attempts to eliminate OOTA and RFUB properties from
 	the memory model have resulted in otherwise needless added
 	overheads on weakly ordered systems on the one hand or
@@ -86,23 +85,15 @@ Many taken from Hans's \co{memory-model-design} posting on
 September 4, 2018.\footnote{
 	Message-ID: \co{<CAMOCf+jchGw6DeE2NyCJA3wfFbNH-WFn59JruZPSWt9_jPW9NQ@mail.gmail.com>}.}
 
-\subsection{Shared Fences}
-\label{sec:Shared Fences}
+\subsection{Untrusted Loads}
+\label{sec:Untrusted Loads}
 
-The \co{std::atomic_thread_fence()} function can be used to order
-multiple sets of accesses, for example, by replacing a series of
-acquire loads with relaxed loads followed by an
-\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
-or a series of release stores with an
-\co{std::atomic_thread_fence(memory_order_release)} followed by
-a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+In many cases, it is acceptable for a load from an atomic shared variable
+to occasionsally return random bits because the value is checked by
+some later operation.
+In such cases, the load can be a relaxed load.
 
-In this use case, OOTA and RFUB behaviors are ruled out by the semantics
-of \co{std::atomic_thread_fence()}.
-
-\subsection{Initial Load for CAS}
-\label{sec:Initial Load for CAS}
-
+Perhaps the most well-known later checking operation is compare-and-swap (CAS).
 The \co{std::atomic_compare_exchange_*()} family of read-modify-write
 CAS operations are typically used in a loop, and often require an initial
 load prior to the first pass through that loop.
@@ -114,8 +105,13 @@ are to be OOTA/RFUB-free in conjunction with an initial relaxed load.
 One common design pattern is the single-location data structure discussed in
 Section~\ref{sec:Single-Location Data Structures}.
 
+Additional examples are presented by
+Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
+
 \subsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
+
+\emph{Note:} There is some debate on this use case.
 
 A re-entrant exclusive mutex must track its owner in order to avoid
 self-deadlock when the owner re-acquires the mutex it already holds.
@@ -181,6 +177,20 @@ Relaxed atomic operations also provide sequentially consistent access
 to multiple objects from a single thread.
 This allows relaxed atomic operations to be used during the single-threaded
 initialization and cleanup phases of a concurrent program.
+
+\subsection{Shared Fences}
+\label{sec:Shared Fences}
+
+The \co{std::atomic_thread_fence()} function can be used to order
+multiple sets of accesses, for example, by replacing a series of
+acquire loads with relaxed loads followed by an
+\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
+or a series of release stores with an
+\co{std::atomic_thread_fence(memory_order_release)} followed by
+a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+
+In this use case, OOTA and RFUB behaviors are ruled out by the semantics
+of \co{std::atomic_thread_fence()}.
 
 \subsection{One-Way Memory Allocation}
 \label{sec:One-Way Memory Allocation}
