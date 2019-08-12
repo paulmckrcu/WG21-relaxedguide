@@ -246,6 +246,38 @@ data~\cite{Andrews91textbook}.
 In theory, these algorithms are subject to OOTA and RFUB behaviors, however,
 in practice, current implementations avoid such behaviors.
 
+\section{Marking of Relaxed Design Patterns}
+\label{sec:Marking of Relaxed Design Patterns}
+
+It is currently believed that these use cases must be explicitly marked
+in order for code reviewers and automatic verifiers to recognize them
+and validate their usage.
+Here are some candidate marking strategies that have been discussed
+within the C++ standards committee:
+
+\begin{enumerate}
+\item	Create new \co{memory_order} \co{enum} members for each new
+	use case.
+	This has the benefit of calling out the pattern in an unmistakable
+	way that is visible to the compiler, but requires that each
+	new use case be standardized.
+	It also does not support the case where a given access plays a
+	role in multiple overlapping use cases.
+\item	Use structured comments to mark each use case.
+	This avoids the time delays and administrative overhead inherent
+	in standardization, and could potentially allow multiple comments
+	to handle a given access that plays a role in multiple overlapping
+	use cases.
+\item	Define C++ \co{template} types for each use case.
+	This is an excellent idea where it applies, as it might well
+	for the statistical counters discussed in
+	Section~\ref{sec:Statistical Counters}.
+	However, we have reason to doubt that \co{template} types can
+	be reasonably created for all possible use cases.
+\end{enumerate}
+
+More ideation and discussion is needed on this topic.
+
 \section{Use of Relaxed Design Patterns}
 \label{sec:Use of Relaxed Design Patterns}
 
