@@ -1,4 +1,4 @@
-\documentclass{article}
+\documentclass[10]{article}
 
 % standard packages
 
@@ -29,6 +29,9 @@
   literate={\_}{}{0\discretionary{\_}{}{\_}}%
 }
 
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+
 \DeclareUrlCommand\email{}
 
 \pagestyle{fancy}
@@ -47,7 +50,7 @@ Hans Boehm\\\email{hboehm@google.com} \and
 Paul E.~McKenney\\\email{paulmck@kernel.org} \and
 The Indefatigible TBD
 }
-\date{August 9, 2019}
+\date{August 19, 2019}
 \maketitle{}
 
 \begin{abstract}
@@ -155,8 +158,11 @@ the cycles required for OOTA or RFUB behavior to manifest.
 Exact values are sometimes obtained from statistical counters in
 stop-the-world situations, such as checking for consistent results
 at the end of a stress test or benchmarking run.
-In these cases, OOTA and RFUB behaviors are avoided due to the
-single-threaded nature of the consistency checks.
+Alternatively, counter updates might be carried out while read-holding
+a given reader-writer lock and counter reads while write-holding
+that same lock.
+In all of cases, OOTA and RFUB behaviors are avoided due to the
+single-threaded nature of the readout.
 
 \subsection{Single-Location Data Structures}
 \label{sec:Single-Location Data Structures}
@@ -203,11 +209,25 @@ with a heavy weight one-sided mechanism.''
 
 Note that memory allocation and pointer publication are separate
 design patterns, and that publication of a pointer to other threads
-requires at least \co{memory_order_relaxed} in order to ensure that
+requires at least \co{memory_order_release} in order to ensure that
 the allocation happens before the publication, even if the allocated
 memory remains uninitialized.
 
 \emph{[ @@@ Add citation for RFUB example. ]}
+
+\subsection{Allocator Caches}
+\label{sec:Allocator Caches}
+
+Allocator caches provide per-CPU or per-thread pools of free memory
+in order to provide high-performance scalable memory allocation in
+the common case~\cite{McKenney93}.
+In practice, these pools are accessed using the moral equivalent of
+relaxed accesses.
+However, as before, memory allocation and pointer publication are separate
+design patterns, and publication of a pointer to other threads
+requires at least \co{memory_order_release} in order to ensure that
+the allocation happens before the publication, even if the allocated
+memory remains uninitialized.
 
 \subsection{Sequence Locking}
 \label{sec:Sequence Locking}
@@ -234,16 +254,6 @@ Because only the one-to-zero transition requires ordering, reference-count
 increments can be relaxed in cases where another reference is guaranteed
 to be held throughout.
 
-\subsection{Relaxed Consumption}
-\label{sec:Relaxed Consumption}
-
-In cases where a full-speed \co{memory_order_consume} is needed on a
-weak-memory system and where the developers are willing to live within
-strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
-\co{memory_order_relaxed} may be used to head dependency chains.
-
-Note well that this design pattern is outside of the current standard.
-
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
 
@@ -254,6 +264,98 @@ data~\cite{Andrews91textbook}.
 
 In theory, these algorithms are subject to OOTA and RFUB behaviors, however,
 in practice, current implementations avoid such behaviors.
+
+\subsection{Garbage Collection}
+\label{sec:Garbage Collection}
+
+@@@ TBD, but believed to be subject to OOTA and RFUB. @@@
+
+\subsection{Relaxed Consumption}
+\label{sec:Relaxed Consumption}
+
+In cases where a full-speed \co{memory_order_consume} is needed on a
+weak-memory system and where the developers are willing to live within
+strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
+\co{memory_order_relaxed} may be used to head dependency chains.
+
+Note well that this design pattern is outside of the current standard.
+
+\section{Attributes of Relaxed Design Patterns}
+\label{sec:Attributes of Relaxed Design Patterns}
+
+\begin{table}
+\renewcommand*{\arraystretch}{1.2}
+\newcommand{\x}{\textcolor{gray!20}{\rule{7pt}{7pt}}}
+\newcommand{\rothead}[1]{\begin{picture}(6,70)(0,0)\rotatebox{90}{#1}\end{picture}}
+\small
+\centering
+\begin{tabular}{lccccccc}
+	\toprule
+	& \rothead{Multiple Threads}
+	& \rothead{Concurrent WW}
+	& \rothead{Concurrent RW}
+	& \rothead{~~~~But Checked}
+	& \rothead{~~~~But Discarded}
+	& \rothead{~~~~Fungible Values}
+	& \rothead{Unordered Cycle}
+	\\
+%				  MT  CWW   CRW    BC   BD   FV    UC
+	\cmidrule(r){1-1} \cmidrule{2-8}
+	Untrusted Loads		&  Y & \x &   Y  &  Y & \x & \x &  \x \\
+	Mutex Owner Field	&  Y & \x &   Y  &  Y & \x & \x &  \x \\
+	Statistical Counters	&  Y & \x &   Y  & \x & \x & \x &  \x \\
+	Single-Location
+	   Data Structures	&  Y &  Y &   Y  &  Y &  Y &  Y &  \x \\
+	Single-Threaded
+	   Processing Phases	& \x & \x &  \x  & \x & \x & \x &  \x \\
+	Shared Fences		&  Y &  Y &   Y  & \x & \x & \x &  \x \\
+	One-Way Memory
+	   Allocation		&  Y &  Y &  \x  & \x & \x & \x &  \x \\
+	Allocator Caches	& \x & \x &  \x  & \x & \x & \x &  \x \\
+	Sequence Locking	&  Y & \x &   Y  & \x &  Y & \x &  \x \\
+	Java Hashcode Access	&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+	Atomic Reference-Count
+	   Updates		&  Y &  Y &   Y  & \x & \x &  Y &  \x \\
+	Chaotic Relaxation	&  Y &  Y &   Y  & \x & \x & \x &   Y \\
+	Garbage Collection	&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+	\bottomrule
+\end{tabular}
+\caption{Attributes of Relaxed Design Patterns}
+\label{tab:Attributes of Relaxed Design Patterns}
+\end{table}
+
+Table~\ref{tab:Attributes of Relaxed Design Patterns}
+shows attributes of design patterns.
+The attributes are as follows:
+
+\begin{enumerate}
+\item	\emph{Multiple Threads:}  The design pattern uses multiple threads
+	in and of itself.
+	Note that ostensibly single-threaded patterns often interact
+	with other patterns extending across multiple threads.
+	For example, allocator caches operate within a single
+	thread, but the resulting memory blocks and associated pointers
+	will assuredly be passed to other threads using some other
+	pattern such as release-acquire or release-consume.
+\item	\emph{Concurrent WW:}  The design pattern involves concurrent
+	relaxed writes to a given object.
+\item	\emph{Concurrent RW:}  The design pattern involves concurrent
+	relaxed reads and writes to a given object, but not necessarly
+	concurrent relaxed writes.
+\item	\emph{But Checked:}  The values from the concurrent reads are
+	checked if there is the possibility of a concurrent write.
+\item	\emph{But Discarded:}  The values from the concurrent reads are
+	discarded if there is the possibility of a concurrent write.
+\item	\emph{But Fungible:}  The values from the concurrent reads are
+	fungible if there is the possibility of a concurrent write,
+	that is, a fixed decision guaranteed to be made based on any
+	value from a read that might have run concurrently with a write.
+\item	\emph{Unordered Cycle:}  The design pattern can produce an
+	unordered cycle in and of itself.
+	Of course, a combination of design patterns that individually
+	exclude the possibility of an unordered cycle might nevertheless
+	produce an unordered cycle when used in combination.
+\end{enumerate}
 
 \section{Marking of Relaxed Design Patterns}
 \label{sec:Marking of Relaxed Design Patterns}
