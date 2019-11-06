@@ -137,15 +137,19 @@ to occasionally return random bits because the value is checked by
 some later operation.
 In such cases, the load can be a relaxed load.
 
-Perhaps the most well-known later checking operation is compare-and-swap (CAS).
+Perhaps the most well-known later checking operation is a non-relaxed
+compare-and-swap (CAS).
 The \co{std::atomic_compare_exchange_*()} family of read-modify-write
 CAS operations are typically used in a loop, and often require an initial
 load prior to the first pass through that loop.
 For non-relaxed CAS operations, this initial load can typically be a
 relaxed load, with the CAS operation's ordering preventing OOTA and RFUB
 behaviors.
-Relaxed CAS operations need to be part of some other design pattern if they
-are to be OOTA/RFUB-free in conjunction with an initial relaxed load.
+Relaxed CAS operations need to be part of some other design pattern
+(for example, the shared fences pattern called out in
+Section~\ref{sec:Shared Fences}
+if they are to be OOTA/RFUB-free in conjunction with an initial relaxed
+load.
 One common design pattern is the single-location data structure discussed in
 Section~\ref{sec:Single-Location Data Structures}.
 
@@ -197,6 +201,73 @@ may use \co{memory_order_relaxed}.
 % of OOTA or RFUB behaviors.
 % --- If all writes to all objects are protected by a given mutex, maybe.
 
+\subsection{Allocator Caches}
+\label{sec:Allocator Caches}
+
+Allocator caches provide per-CPU or per-thread pools of free memory
+in order to provide high-performance scalable memory allocation in
+the common case~\cite{McKenney93}.
+In practice, these pools are accessed using the moral equivalent of
+relaxed accesses.
+However, as before, memory allocation and pointer publication are separate
+design patterns, and publication of a pointer to other threads
+requires at least \co{memory_order_release} in order to ensure that
+the allocation happens before the publication, even if the allocated
+memory remains uninitialized.
+
+It may be helpful to list phases of a dynamically allocated object's
+lifetime:
+
+\begin{enumerate}
+\item	Allocation.
+\item	Initialization, including construction.
+\item	Use.
+	This might include subphases, but given that any such
+	subphases are defined by the user, safely transitioning between
+	them is the user's responsibility.
+\item	Cleanup, including destruction.
+\item	Deallocation.
+\end{enumerate}
+
+Note the possibility of memory reuse means that this is a cycle rather
+than a sequence.
+
+The key point is that there must be a happens-before edge for each
+phase transition.
+In the case of the cleanup to deallocation to allocation to initialization
+transitions, this happens-before edge is frequently supplied by
+sequenced-before, courtesy of the fact that allocator caches cause
+all of those transitions to occur within a single thread in the common
+case.
+However, some sort of happens-before edge is required for each phase
+transition regardless of which thread is executing any given phase.
+
+\subsection{One-Way Memory Allocation}
+\label{sec:One-Way Memory Allocation}
+
+``For allocating fresh memory that's never deallocated, or deallocated
+with a heavy weight one-sided mechanism.''
+
+\emph{[ How do we characterize this to avoid the infamous RFUB example?
+	Here is my first cut: ]}
+
+As in
+Section~\ref{sec:Allocator Caches},
+a happens-before edge is required for each transition in each
+dynamically allocated object's lifetime.
+This requirement rules out the infamous RFUB cycle.
+
+\emph{[ @@@ Add citation for RFUB example. ]}
+
+\subsection{Sequence Locking}
+\label{sec:Sequence Locking}
+
+The accesses within a sequence-locking read-side critical section can
+used relaxed loads because any concurrency with the corresponding
+update will result in a retry, thus discarding the loaded values.
+This not only prevents the surfacing of any OOTA or RFUB cycles, but
+also of any other non-SC behaviors.
+
 \subsection{Statistical Counters}
 \label{sec:Statistical Counters}
 
@@ -218,45 +289,6 @@ a given reader-writer lock and counter reads while write-holding
 that same lock.
 In all of cases, OOTA and RFUB behaviors are avoided due to the
 single-threaded nature of the readout.
-
-\subsection{One-Way Memory Allocation}
-\label{sec:One-Way Memory Allocation}
-
-``For allocating fresh memory that's never deallocated, or deallocated
-with a heavy weight one-sided mechanism.''
-
-\emph{[ How do we characterize this to avoid the infamous RFUB example?
-	Here is my first cut: ]}
-
-Note that memory allocation and pointer publication are separate
-design patterns, and that publication of a pointer to other threads
-requires at least \co{memory_order_release} in order to ensure that
-the allocation happens before the publication, even if the allocated
-memory remains uninitialized.
-
-\emph{[ @@@ Add citation for RFUB example. ]}
-
-\subsection{Allocator Caches}
-\label{sec:Allocator Caches}
-
-Allocator caches provide per-CPU or per-thread pools of free memory
-in order to provide high-performance scalable memory allocation in
-the common case~\cite{McKenney93}.
-In practice, these pools are accessed using the moral equivalent of
-relaxed accesses.
-However, as before, memory allocation and pointer publication are separate
-design patterns, and publication of a pointer to other threads
-requires at least \co{memory_order_release} in order to ensure that
-the allocation happens before the publication, even if the allocated
-memory remains uninitialized.
-
-\subsection{Sequence Locking}
-\label{sec:Sequence Locking}
-
-The accesses within a sequence-locking read-side critical section can
-used relaxed loads because any concurrency with the corresponding
-update will result in a retry, thus discarding the loaded values.
-This prevents an OOTA or RFUB cycle.
 
 \subsection{Java Hashcode Access}
 \label{sec:Java Hashcode Access}
