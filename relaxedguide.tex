@@ -88,11 +88,52 @@ Many taken from Hans's \co{memory-model-design} posting on
 September 4, 2018.\footnote{
 	Message-ID: \co{<CAMOCf+jchGw6DeE2NyCJA3wfFbNH-WFn59JruZPSWt9_jPW9NQ@mail.gmail.com>}.}
 
+\subsection{Non-Racing Accesses}
+\label{sec:Non-Racing Accesses}
+
+Any non-racing access to an atomic object can be a relaxed access.
+Because the access is not concurrent with a conflicting access (store
+against either store or load), further ordering is unnecessary.\footnote{
+	This covers case~\#8 in Hans's September 4, 2019 email.}
+Important special cases of this pattern are the single-threaded
+initialization and cleanup phases of an otherwise concurrent program.
+
+In fact, such accesses can in theory be non-atomic.
+In environments where atomicity is controlled by the access rather
+than the object definition, such accesses are non-atomic in
+practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
+
+\subsection{Single-Location Data Structures}
+\label{sec:Single-Location Data Structures}
+
+Relaxed atomic operations provide sequentially consistent access to
+a single object.
+This means that data structures that fit into a single object can
+be accessed with relaxed atomics with no possibility of OOTA or
+RFUB behavior.
+
+Note well that a pair of single-location data structures might well
+interact in a way that could raise the spectre of OOTA or RFUB.
+
+\subsection{Shared Fences}
+\label{sec:Shared Fences}
+
+The \co{std::atomic_thread_fence()} function can be used to order
+multiple sets of accesses, for example, by replacing a series of
+acquire loads with relaxed loads followed by an
+\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
+or a series of release stores with an
+\co{std::atomic_thread_fence(memory_order_release)} followed by
+a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+
+In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
+of \co{std::atomic_thread_fence()}.
+
 \subsection{Untrusted Loads}
 \label{sec:Untrusted Loads}
 
 In many cases, it is acceptable for a load from an atomic shared variable
-to occasionsally return random bits because the value is checked by
+to occasionally return random bits because the value is checked by
 some later operation.
 In such cases, the load can be a relaxed load.
 
@@ -120,12 +161,29 @@ A re-entrant exclusive mutex must track its owner in order to avoid
 self-deadlock when the owner re-acquires the mutex it already holds.
 This owner field is updated only while the lock is held, and its value
 is used only to compare for equality to the current thread's ID.
+Before releasing the lock, the owner writes a special ID to the owner
+field that is guaranteed not to match the ID of any thread.
 Other threads can access the owner concurrently with the owner's
 update, so the owner field must be an atomic in order to avoid data races.
 
 However, the only time that the owner field can be equal to the thread ID
 is when that thread carried out the last update to the owner field and
-still holds the mutex.
+still holds the mutex:
+
+\begin{enumerate}
+\item	Each thread writes only its ID or the special ID.
+\item	Because \co{memory_order_relaxed} loads are single-variable
+	SC, and because each thread sets the owner field to the special
+	ID before releasing the lock, a given thread cannot see its own
+	ID unless it still holds the lock.
+\item	Because atomic accesses forbid load tearing, each load from
+	the owner field will return either the initial value
+	(which is the special ID) or some value written by some
+	thread holding the lock.
+\item	Therefore, when a thread is not holding the lock, it is guaranteed
+	not to load its own ID from the owner field.
+\end{enumerate}
+
 No other thread is allowed to write to the owner field while the lock
 is held, so it is impossible to form the cycles required for OOTA or
 RFUB behavior to manifest.\footnote{
@@ -134,13 +192,10 @@ RFUB behavior to manifest.\footnote{
 Therefore, both the reads from and the writes to the owner field
 may use \co{memory_order_relaxed}.
 
-More generally, if an object is written only while a given mutex is
-held, all accesses to that object may be relaxed without the possibility
-of OOTA or RFUB behaviors.
-
-Even more generally, if an object must be atomic for other reasons, then
-any non-racing read or write can be a relaxed access.\footnote{
-	This covers case~\#8 in Hans's September 4, 2019 email.}
+% More generally, if an object is written only while a given mutex is
+% held, all accesses to that object may be relaxed without the possibility
+% of OOTA or RFUB behaviors.
+% --- If all writes to all objects are protected by a given mutex, maybe.
 
 \subsection{Statistical Counters}
 \label{sec:Statistical Counters}
@@ -163,40 +218,6 @@ a given reader-writer lock and counter reads while write-holding
 that same lock.
 In all of cases, OOTA and RFUB behaviors are avoided due to the
 single-threaded nature of the readout.
-
-\subsection{Single-Location Data Structures}
-\label{sec:Single-Location Data Structures}
-
-Relaxed atomic operations provide sequentially consistent access to
-a single object.
-This means that data structures that fit into a single object can
-be accessed with relaxed atomics with no possibility of OOTA or
-RFUB behavior.
-
-Note well that a pair of single-location data structures might well
-interact in a way that could raise the spectre of OOTA or RFUB.
-
-\subsection{Single-Threaded Processing Phases}
-\label{sec:Single-Threaded Processing Phases}
-
-Relaxed atomic operations also provide sequentially consistent access
-to multiple objects from a single thread.
-This allows relaxed atomic operations to be used during the single-threaded
-initialization and cleanup phases of a concurrent program.
-
-\subsection{Shared Fences}
-\label{sec:Shared Fences}
-
-The \co{std::atomic_thread_fence()} function can be used to order
-multiple sets of accesses, for example, by replacing a series of
-acquire loads with relaxed loads followed by an
-\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
-or a series of release stores with an
-\co{std::atomic_thread_fence(memory_order_release)} followed by
-a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
-
-In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
-of \co{std::atomic_thread_fence()}.
 
 \subsection{One-Way Memory Allocation}
 \label{sec:One-Way Memory Allocation}
@@ -323,6 +344,8 @@ Note well that this design pattern is outside of the current standard.
 \caption{Attributes of Relaxed Design Patterns}
 \label{tab:Attributes of Relaxed Design Patterns}
 \end{table}
+
+@@@ Update @@@
 
 Table~\ref{tab:Attributes of Relaxed Design Patterns}
 shows attributes of design patterns.
