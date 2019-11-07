@@ -324,6 +324,10 @@ to provide an \co{atomic_load_per_byte_memcpy()} that allows safe
 non-atomic access to data for sequence-lock readers, as well as an
 \co{atomic_store_per_byte_memcpy()} to update that same data by
 sequence-lock updaters.
+It is nevertheless quite possible that some sequence-lock readers
+might continue to use relaxed atomics in order to permit reliable
+computations within readers in the presence of data objects having
+trap representations.
 
 \subsection{Statistical Counters}
 \label{sec:Statistical Counters}
@@ -334,9 +338,36 @@ However, the concurrent reads are modeled as returning approximate results
 (for example, for monitoring or debugging),
 and can in fact be modeled as sequentially consistent approximate
 operations.
-Furthermore, data flow is almost always unidirectional, proceeding from
-the updater responding to an event and flowing to the reader, precluding
-the cycles required for OOTA or RFUB behavior to manifest.
+But more to the point, data flow in real use cases is always
+unidirectional, proceeding from the updater responding to an event
+and flowing through the counter to some reader displaying or logging
+statistics.
+This unidirectional data flow precludes the cycles required for OOTA or
+RFUB behavior to manifest.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 StatCounter<int> a;
+ 2 StatCounter<int> b;
+ 3
+ 4 void thread1()
+ 5 {
+ 6   int r1 = a.readout();
+ 7   b.increase(r1);
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   int r2 = b.readout();
+13   a.increase(r2);
+14 }
+\end{verbatim}
+\caption{Statistical-Counter Abuse and OOTA}
+\label{lst:Statistical-Counter Abuse and OOTA}
+\end{listing}
+
+And example abuse is shown in
+Listing~\ref{lst:Statistical-Counter Abuse and OOTA}.
 
 Exact values are sometimes obtained from statistical counters in
 stop-the-world situations, such as checking for consistent results
