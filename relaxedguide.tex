@@ -122,16 +122,18 @@ interact in a way that could raise the spectre of OOTA or RFUB.
 \subsection{Shared Fences}
 \label{sec:Shared Fences}
 
-The \co{std::atomic_thread_fence()} function can be used to order
+The \co{atomic_thread_fence()} function can be used to order
 multiple sets of accesses, for example, by replacing a series of
 acquire loads with relaxed loads followed by an
-\co{std::atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
+\co{atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
 or a series of release stores with an
-\co{std::atomic_thread_fence(memory_order_release)} followed by
+\co{atomic_thread_fence(memory_order_release)} followed by
 a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+In many cases, other ordered atomic operations may be substituted for
+the fence operations.
 
 In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
-of \co{std::atomic_thread_fence()}.
+of \co{atomic_thread_fence()}.
 
 \subsection{Untrusted Loads}
 \label{sec:Untrusted Loads}
@@ -143,7 +145,7 @@ In such cases, the load can be a relaxed load.
 
 Perhaps the most well-known later checking operation is a non-relaxed
 compare-and-swap (CAS).
-The \co{std::atomic_compare_exchange_*()} family of read-modify-write
+The \co{atomic_compare_exchange_*()} family of read-modify-write
 CAS operations are typically used in a loop, and often require an initial
 load prior to the first pass through that loop.
 For non-relaxed CAS operations, this initial load can typically be a
