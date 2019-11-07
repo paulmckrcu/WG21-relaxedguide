@@ -135,6 +135,18 @@ the fence operations.
 In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
 of \co{atomic_thread_fence()}.
 
+\subsection{Atomic Reference-Count Updates}
+\label{sec:Atomic Reference-Count Updates}
+
+In certain reference-count use cases, the ordering of the incremeents and
+decrements is irrelevant.
+One common case is where it is only legal to increment the reference
+count when you already have a reference, in which case the count cannot
+possibly decrease to zero in the meantime.
+Because only the one-to-zero transition requires ordering, reference-count
+increments can be relaxed in cases where another reference is guaranteed
+to be held throughout.
+
 \subsection{Untrusted Loads}
 \label{sec:Untrusted Loads}
 
@@ -299,11 +311,19 @@ may use \co{memory_order_relaxed}.
 \subsection{Sequence Locking}
 \label{sec:Sequence Locking}
 
-The accesses within a sequence-locking read-side critical section can
-used relaxed loads because any concurrency with the corresponding
-update will result in a retry, thus discarding the loaded values.
-This not only prevents the surfacing of any OOTA or RFUB cycles, but
+The accesses within a sequence-locking read-side critical section
+can used relaxed loads because any concurrency with the corresponding
+update will result in a retry, thus discarding any loaded values.
+Assuming that sequence-locking readers never store to shared memory,
+this not only prevents the surfacing of any OOTA or RFUB cycles, but
 also of any other non-SC behaviors.
+
+Note that there is a proposal\footnote{
+	\url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1478r0.html}}
+to provide an \co{atomic_load_per_byte_memcpy()} that allows safe
+non-atomic access to data for sequence-lock readers, as well as an
+\co{atomic_store_per_byte_memcpy()} to update that same data by
+sequence-lock updaters.
 
 \subsection{Statistical Counters}
 \label{sec:Statistical Counters}
@@ -331,18 +351,6 @@ single-threaded nature of the readout.
 \label{sec:Java Hashcode Access}
 
 \emph{[ Does this apply to C or C++? ]}
-
-\subsection{Atomic Reference-Count Updates}
-\label{sec:Atomic Reference-Count Updates}
-
-In certain reference-count use cases, the ordering of the incremeents and
-decrements is irrelevant.
-One common case is where it is only legal to increment the reference
-count when you already have a reference, in which case the count cannot
-possibly decrease to zero in the meantime.
-Because only the one-to-zero transition requires ordering, reference-count
-increments can be relaxed in cases where another reference is guaranteed
-to be held throughout.
 
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
