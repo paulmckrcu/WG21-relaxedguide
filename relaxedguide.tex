@@ -103,6 +103,10 @@ In environments where atomicity is controlled by the access rather
 than the object definition, such accesses are non-atomic in
 practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
 
+\emph{Hans to supply wording for the weird exceptions where the compiler
+is allowed to apply optimizations to \co{memory_order_relaxed} that it
+is not allowed to apply to non-atomic accesses.}
+
 \subsection{Single-Location Data Structures}
 \label{sec:Single-Location Data Structures}
 
