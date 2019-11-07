@@ -329,15 +329,21 @@ might continue to use relaxed atomics in order to permit reliable
 computations within readers in the presence of data objects having
 trap representations.
 
-\subsection{Statistical Counters}
-\label{sec:Statistical Counters}
+\subsection{Unidirectional Data Flow}
+\label{sec:Unidirectional Data Flow}
 
-Statistical counters have concurrent updates and reads, and thus must
+If data flows only in one direction, then OOTA cycles cannot form.
+The canonical example of this pattern is the statistical counter,
+in which each thread (or CPU, as the case may be) updates its own
+counter, and the aggregate value of the counter is read out by summing
+all threads'
+counters~\cite[Section 5.2]{McKenney2018ParallelProgramming-2018-12-08a}.
+
+Statistical counters do have concurrent updates and reads, and thus must
 use atomics.
-However, the concurrent reads are modeled as returning approximate results
-(for example, for monitoring or debugging),
-and can in fact be modeled as sequentially consistent approximate
-operations.
+However, the concurrent reads can be modeled as returning approximate
+results (for example, for monitoring or debugging), and can in fact be
+modeled as sequentially consistent approximate operations.
 But more to the point, data flow in real use cases is always
 unidirectional, proceeding from the updater responding to an event
 and flowing through the counter to some reader displaying or logging
@@ -368,15 +374,39 @@ RFUB behavior to manifest.
 
 And example abuse is shown in
 Listing~\ref{lst:Statistical-Counter Abuse and OOTA}.
+Lines~1 and~2 define a pair of statistical counters \co{a} and \co{b}.
+The \co{thread1()} and co{thread2()} functions form a classic
+data-dependent OOTA cycle.
+Assuming both statistical counters start out with all counters zero,
+we could in theory see the following OOTA sequence of events:
+
+\begin{enumerate}
+\item	Line~6 sums \co{a}'s counters, obtaining the sum 42.
+\item	Line~7 increases the current component of \co{b}'s counter by 42.
+\item	Line~12 sums \co{b}'s counters, obtaining the sum 42 due to the
+	increase from line~7.
+\item	Line~13 increases the current component of \co{a}'s counter by 42,
+	thus justifying the sum of 42 obtained by line~6.
+\end{enumerate}
+
+Of course, the code in
+Listing~\ref{lst:Statistical-Counter Abuse and OOTA}
+is nonsensical: Counters should count events, not each others's cumulative
+values.
+The code as written is about as useful as the proverbial screen door in
+a submarine.
+Problems of this sort should be located in a code review, or better yet
+during the preceding design review.
 
 Exact values are sometimes obtained from statistical counters in
 stop-the-world situations, such as checking for consistent results
-at the end of a stress test or benchmarking run.
+at the end of a stress test or benchmarking
+run~\cite[Sections 5.3 and 5.4]{McKenney2018ParallelProgramming-2018-12-08a}.
 Alternatively, counter updates might be carried out while read-holding
 a given reader-writer lock and counter reads while write-holding
 that same lock.
-In all of cases, OOTA and RFUB behaviors are avoided due to the
-single-threaded nature of the readout.
+In all of cases, OOTA and RFUB behaviors are additionally avoided due
+to the fully synchronized nature of the readout.
 
 \subsection{Java Hashcode Access}
 \label{sec:Java Hashcode Access}
@@ -519,7 +549,7 @@ within the C++ standards committee:
 \item	Define C++ \co{template} types for each design pattern.
 	This is an excellent idea where it applies, as it might well
 	for the statistical counters discussed in
-	Section~\ref{sec:Statistical Counters}.
+	Section~\ref{sec:Unidirectional Data Flow}.
 	However, we have reason to doubt that \co{template} types can
 	be reasonably created for all possible relaxed-access design
 	patterns.
