@@ -354,10 +354,49 @@ trap representations.
 \label{sec:Unidirectional Data Flow}
 
 If data flows only in one direction, then OOTA cycles cannot form.
-The canonical example of this pattern is the statistical counter,
-in which each thread (or CPU, as the case may be) updates its own
-counter, and the aggregate value of the counter is read out by summing
-all threads'
+
+\subsubsection{Independent Input Data}
+\label{sec:Independent Input Data}
+
+Input data consisting of independent objects may be read using relaxed
+accesses because these objects are not affected by downstream computations.
+Here input data is defined broadly, including:
+
+\begin{enumerate}
+\item	Measurements of outside environmental conditions.
+\item	Device configuration data.
+\item	Software configuration data.
+\item	Security policies.
+\item	Network routing information.
+\end{enumerate}
+
+The key point is that the concurrent-computation portion of application
+references but does not modify this data, and that there are no
+object-to-object consistency constraints.
+
+\subsubsection{Independent Output Data}
+\label{sec:Independent Output Data}
+
+Similarly, output data consisting of independent objects may be written
+using relaxed accesses because these objects do not affect upstream
+computations.
+As before, output data is defined broadly, including:
+
+\begin{enumerate}
+\item	Control of objects external to the computer.
+\item	Many classes of debug output.
+\item	Some use cases involving video frame buffers.
+\item	Some use cases involving communication to a later stage of a
+	software pipeline.
+\end{enumerate}
+
+\subsubsection{Statistical Counters}
+\label{sec:Statistical Counters}
+
+The canonical instance of a unidirectional data-flow pattern is the
+statistical counter, in which each thread (or CPU, as the case may be)
+updates its own counter, and the aggregate value of the counter is read
+out by summing all threads'
 counters~\cite[Section 5.2]{McKenney2018ParallelProgramming-2018-12-08a}.
 
 Statistical counters do have concurrent updates and reads, and thus must
@@ -429,6 +468,19 @@ that same lock.
 In all of cases, OOTA and RFUB behaviors are additionally avoided due
 to the fully synchronized nature of the readout.
 
+\subsubsection{Relaxed Consumption}
+\label{sec:Relaxed Consumption}
+
+In cases where a full-speed \co{memory_order_consume} is needed on a
+weak-memory system and where the developers are willing to live within
+strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
+\co{memory_order_relaxed} may be used to head dependency chains.
+In many (but not all!) use cases, the data flow is also unidirectional,
+proceeding from the thread installing the new object to the threads
+consuming it.
+
+Note well that this design pattern is outside of the current standard.
+
 \subsection{Java Hashcode Access}
 \label{sec:Java Hashcode Access}
 
@@ -449,16 +501,6 @@ in practice, current implementations avoid such behaviors.
 \label{sec:Garbage Collection}
 
 @@@ TBD, but believed to be subject to OOTA and RFUB. @@@
-
-\subsection{Relaxed Consumption}
-\label{sec:Relaxed Consumption}
-
-In cases where a full-speed \co{memory_order_consume} is needed on a
-weak-memory system and where the developers are willing to live within
-strict coding standards~\cite{PaulEMcKenney2014rcu-dereference},
-\co{memory_order_relaxed} may be used to head dependency chains.
-
-Note well that this design pattern is outside of the current standard.
 
 \section{Attributes of Relaxed Design Patterns}
 \label{sec:Attributes of Relaxed Design Patterns}
