@@ -95,17 +95,125 @@ Any non-racing access to an atomic object can be a relaxed access.
 Because the access is not concurrent with a conflicting access (store
 against either store or load), further ordering is unnecessary.\footnote{
 	This covers case~\#8 in Hans's September 4, 2019 email.}
-Important special cases of this pattern are the single-threaded
-initialization and cleanup phases of an otherwise concurrent program.
-
 In fact, such accesses can in theory be non-atomic.
 In environments where atomicity is controlled by the access rather
-than the object definition, such accesses are non-atomic in
+than the object definition, such accesses are often non-atomic in
 practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
 
 \emph{Hans to supply wording for the weird exceptions where the compiler
 is allowed to apply optimizations to \co{memory_order_relaxed} that it
 is not allowed to apply to non-atomic accesses.}
+
+\subsubsection{Initialization and Cleanup}
+\label{sec:Initialization and Cleanup}
+
+Important special cases of this pattern are the single-threaded
+initialization and cleanup phases of an otherwise concurrent program.
+These use cases are one motivation for the strong ordering guarantees
+of thread creation and destruction.
+These guarantees permitt the single-threaded initialization and cleanup
+code to run race free, with no need to consider interference from
+code that runs multithreaded.
+
+\subsubsection{Allocator Caches}
+\label{sec:Allocator Caches}
+
+Allocator caches provide per-CPU or per-thread pools of free memory
+in order to provide high-performance scalable memory allocation in
+the common case~\cite{McKenney93}.
+Accesses to these pools are normally single-threaded by design for
+reasons of performance and scalability.
+However, objects are often allocated for concurrent algorithms,
+It may be helpful to list phases of a dynamically allocated object's
+typical lifetime in a concurrent context:
+
+\begin{enumerate}
+\item	Allocation.
+\item	Initialization, including construction.
+\item	Use.
+	This might include subphases, but given that any such
+	subphases are defined by the user, safely transitioning between
+	them is the user's responsibility.
+	This is usually the only phase that permits concurrent access.
+\item	Cleanup, including destruction.
+\item	Deallocation.
+\end{enumerate}
+
+Note the possibility of memory reuse means that this is a cycle rather
+than a sequence.
+
+The key point is that there must be a happens-before edge for each
+phase transition.
+In the case of the cleanup to deallocation to allocation to initialization
+transitions, this happens-before edge is frequently supplied by
+sequenced-before, courtesy of the fact that allocator caches cause
+all of those transitions to occur within a single thread in the common
+case.
+However, some sort of happens-before edge is required for each phase
+transition regardless of which thread is executing any given phase.
+
+In the common case, the transitions requiring other-thread-visible ordering
+are those to and from the "Use" phase.
+In particular, the complexities of transitioning from the "Use" phase
+has inspired safe memory reclamation schemes, including
+reference counting,
+hazard pointers~\cite{Michael02a,HerlihyLM02,MagedMichael04a},
+and RCU~\cite{McKenney98}.
+
+In less-common cases where inter-thread transitions occur between other
+phases, proper synchronization must be required.
+For example, the earlier phase could use a release store and
+the later phase could use an acquire or consume load.
+
+\subsubsection{One-Way Memory Allocation}
+\label{sec:One-Way Memory Allocation}
+
+One-way memory allocation provides fresh memory that is never deallocated,
+or that is deallocated using a heavy weight one-sided mechanism, for
+example, a stop-the-world deallocation phase.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 void *heap;
+ 2
+ 3 void thread1()
+ 4 {
+ 5   r1 = x.load(memory_order_relaxed);
+ 6   y.store(r1, memory_order_relaxed);
+ 7 }
+ 8
+ 9 void thread2()
+10 {
+11   bool allocated(false);
+12   r1 = y.load(memory_order_relaxed);
+13   if (r1 != heap) {
+14     allocated = true;
+15     r1 = heap;
+16   }
+17   x.store(r1, memory_order_relaxed);
+18   assert_not(allocated);
+19 }
+\end{verbatim}
+\caption{RFUB Allocator-Like Example}
+\label{lst:RFUB Allocator-Like Example}
+\end{listing}
+
+As in
+Section~\ref{sec:Allocator Caches},
+allocation and initialization is often performed single-threaded,
+with the allocated objects passing through the same phases.
+And as in that section, a happens-before edge is required for each
+transition in each dynamically allocated object's lifetime.
+This requirement rules out the infamous RFUB cycle shown in
+Listing~\ref{lst:RFUB Allocator-Like Example}.\footnote{
+	Adapted from Boehm and
+	Demsky\cite[Figure 5]{Boehm:2014:OGA:2618128.2618134}.}
+This is because the allocation phase on line~15 is required to happen
+before any later phase, a requirement that is violated by the relaxed
+accesses on lines~5, 12, and~17.
+
+Code reviewers should therefore view relaxed stores of pointers to
+newly allocated objects with great suspicion.
 
 \subsection{Single-Location Data Structures}
 \label{sec:Single-Location Data Structures}
@@ -116,8 +224,10 @@ This means that data structures that fit into a single object can
 be accessed with relaxed atomics with no possibility of OOTA or
 RFUB behavior.
 
-Note well that a pair of single-location data structures might well
+Note well that a group of single-location data structures might well
 interact in a way that could raise the spectre of OOTA or RFUB.
+Design review should therefore pay careful attention to information
+flow.
 
 \subsection{Shared Fences}
 \label{sec:Shared Fences}
@@ -173,95 +283,6 @@ Section~\ref{sec:Single-Location Data Structures}.
 
 Additional examples are presented by
 Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
-
-\subsection{Allocator Caches}
-\label{sec:Allocator Caches}
-
-Allocator caches provide per-CPU or per-thread pools of free memory
-in order to provide high-performance scalable memory allocation in
-the common case~\cite{McKenney93}.
-In practice, these pools are accessed using the moral equivalent of
-relaxed accesses.
-However, as before, memory allocation and pointer publication are separate
-design patterns, and publication of a pointer to other threads
-requires at least \co{memory_order_release} in order to ensure that
-the allocation happens before the publication, even if the allocated
-memory remains uninitialized.
-
-It may be helpful to list phases of a dynamically allocated object's
-lifetime:
-
-\begin{enumerate}
-\item	Allocation.
-\item	Initialization, including construction.
-\item	Use.
-	This might include subphases, but given that any such
-	subphases are defined by the user, safely transitioning between
-	them is the user's responsibility.
-\item	Cleanup, including destruction.
-\item	Deallocation.
-\end{enumerate}
-
-Note the possibility of memory reuse means that this is a cycle rather
-than a sequence.
-
-The key point is that there must be a happens-before edge for each
-phase transition.
-In the case of the cleanup to deallocation to allocation to initialization
-transitions, this happens-before edge is frequently supplied by
-sequenced-before, courtesy of the fact that allocator caches cause
-all of those transitions to occur within a single thread in the common
-case.
-However, some sort of happens-before edge is required for each phase
-transition regardless of which thread is executing any given phase.
-
-\subsection{One-Way Memory Allocation}
-\label{sec:One-Way Memory Allocation}
-
-One-way memory allocation provides fresh memory that's never deallocated,
-or that is deallocated using a heavy weight one-sided mechanism, for
-example, a stop-the-world deallocation phase.
-
-\begin{listing}[tbp]
-\begin{verbatim}
- 1 void *heap;
- 2
- 3 void thread1()
- 4 {
- 5   r1 = x.load(memory_order_relaxed);
- 6   y.store(r1, memory_order_relaxed);
- 7 }
- 8
- 9 void thread2()
-10 {
-11   bool allocated(false);
-12   r1 = y.load(memory_order_relaxed);
-13   if (r1 != heap) {
-14     allocated = true;
-15     r1 = heap;
-16   }
-17   x.store(r1, memory_order_relaxed);
-18   assert_not(allocated);
-19 }
-\end{verbatim}
-\caption{RFUB Allocator-Like Example}
-\label{lst:RFUB Allocator-Like Example}
-\end{listing}
-
-As in
-Section~\ref{sec:Allocator Caches},
-a happens-before edge is required for each transition in each
-dynamically allocated object's lifetime.
-This requirement rules out the infamous RFUB cycle shown in
-Listing~\ref{lst:RFUB Allocator-Like Example}.\footnote{
-	Adapted from Boehm and
-	Demsky\cite[Figure 5]{Boehm:2014:OGA:2618128.2618134}.}
-This is because the allocation phase on line~15 is required to happen
-before any later phase, a requirement that is violated by the relaxed
-accesses on lines~5, 12, and~17.
-
-Code reviewers should therefore view relaxed stores of newly allocated
-pointers with great suspicion.
 
 \subsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
