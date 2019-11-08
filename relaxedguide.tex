@@ -287,51 +287,6 @@ Section~\ref{sec:Single-Location Data Structures}.
 Additional examples are presented by
 Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
 
-\subsection{Owner Field for Re-Entrant Mutex}
-\label{sec:Owner Field for Re-Entrant Mutex}
-
-\emph{Note:} There is some debate on this design pattern.
-
-A re-entrant exclusive mutex must track its owner in order to avoid
-self-deadlock when the owner re-acquires the mutex it already holds.
-This owner field is updated only while the lock is held, and its value
-is used only to compare for equality to the current thread's ID.
-Before releasing the lock, the owner writes a special ID to the owner
-field that is guaranteed not to match the ID of any thread.
-Other threads can access the owner concurrently with the owner's
-update, so the owner field must be an atomic in order to avoid data races.
-
-However, the only time that the owner field can be equal to the thread ID
-is when that thread carried out the last update to the owner field and
-still holds the mutex:
-
-\begin{enumerate}
-\item	Each thread writes only its ID or the special ID.
-\item	Because \co{memory_order_relaxed} loads are single-variable
-	SC, and because each thread sets the owner field to the special
-	ID before releasing the lock, a given thread cannot see its own
-	ID unless it still holds the lock.
-\item	Because atomic accesses forbid load tearing, each load from
-	the owner field will return either the initial value
-	(which is the special ID) or some value written by some
-	thread holding the lock.
-\item	Therefore, when a thread is not holding the lock, it is guaranteed
-	not to load its own ID from the owner field.
-\end{enumerate}
-
-No other thread is allowed to write to the owner field while the lock
-is held, so it is impossible to form the cycles required for OOTA or
-RFUB behavior to manifest.\footnote{
-	In fact, the accesses to the owner field and the mutex's acquire
-	and release operations will be sequentially consistent.}
-Therefore, both the reads from and the writes to the owner field
-may use \co{memory_order_relaxed}.
-
-% More generally, if an object is written only while a given mutex is
-% held, all accesses to that object may be relaxed without the possibility
-% of OOTA or RFUB behaviors.
-% --- If all writes to all objects are protected by a given mutex, maybe.
-
 \subsection{Sequence Locking}
 \label{sec:Sequence Locking}
 
@@ -470,6 +425,54 @@ a given reader-writer lock and counter reads while write-holding
 that same lock.
 In all of cases, OOTA and RFUB behaviors are additionally avoided due
 to the fully synchronized nature of the readout.
+
+\subsubsection{Owner Field for Re-Entrant Mutex}
+\label{sec:Owner Field for Re-Entrant Mutex}
+
+\emph{Note:} There is some debate on this design pattern.
+
+A re-entrant exclusive mutex must track its owner in order to avoid
+self-deadlock when the owner re-acquires the mutex it already holds.
+This owner field is updated only while the lock is held, and its value
+is used only to compare for equality to the current thread's ID.
+Before releasing the lock, the owner writes a special ID to the owner
+field that is guaranteed not to match the ID of any thread.
+Other threads can access the owner concurrently with the owner's
+update, so the owner field must be an atomic in order to avoid data races.
+
+However, the only time that the owner field can be equal to the thread ID
+is when that thread carried out the last update to the owner field and
+still holds the mutex:
+
+\begin{enumerate}
+\item	Each thread writes only its ID or the special ID.
+\item	Because \co{memory_order_relaxed} loads are single-variable
+	SC, and because each thread sets the owner field to the special
+	ID before releasing the lock, a given thread cannot see its own
+	ID unless it still holds the lock.
+\item	Because atomic accesses forbid load tearing, each load from
+	the owner field will return either the initial value
+	(which is the special ID) or some value written by some
+	thread holding the lock.
+\item	Therefore, when a thread is not holding the lock, it is guaranteed
+	not to load its own ID from the owner field.
+\end{enumerate}
+
+No other thread is allowed to write to the owner field while the lock
+is held, so it is impossible to form the cycles required for OOTA or
+RFUB behavior to manifest.\footnote{
+	In fact, the accesses to the owner field and the mutex's acquire
+	and release operations will be sequentially consistent.}
+Therefore, both the reads from and the writes to the owner field
+may use \co{memory_order_relaxed}.
+
+This is a special case of unidirectional data flow, with the data flowing
+from the lock holder to threads not holding the lock.
+
+% More generally, if an object is written only while a given mutex is
+% held, all accesses to that object may be relaxed without the possibility
+% of OOTA or RFUB behaviors.
+% --- If all writes to all objects are protected by a given mutex, maybe.
 
 \subsubsection{Relaxed Consumption}
 \label{sec:Relaxed Consumption}
