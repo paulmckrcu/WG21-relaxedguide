@@ -348,6 +348,11 @@ As before, output data is defined broadly, including:
 	software pipeline.
 \end{enumerate}
 
+Similar to the independent input data discussed in the preceding section,
+the key point is that the concurrent-computation portion of application
+modifies but does not reference this data, and that there are no
+object-to-object consistency constraints.
+
 \subsubsection{Statistical Counters}
 \label{sec:Statistical Counters}
 
@@ -423,7 +428,7 @@ run~\cite[Sections 5.3 and 5.4]{McKenney2018ParallelProgramming-2018-12-08a}.
 Alternatively, counter updates might be carried out while read-holding
 a given reader-writer lock and counter reads while write-holding
 that same lock.
-In all of cases, OOTA and RFUB behaviors are additionally avoided due
+In all of these cases, OOTA and RFUB behaviors are additionally avoided due
 to the fully synchronized nature of the readout.
 
 \subsubsection{Owner Field for Re-Entrant Mutex}
