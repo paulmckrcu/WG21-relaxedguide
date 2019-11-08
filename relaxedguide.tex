@@ -102,7 +102,10 @@ practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
 
 \emph{Hans to supply wording for the weird exceptions where the compiler
 is allowed to apply optimizations to \co{memory_order_relaxed} that it
-is not allowed to apply to non-atomic accesses.}
+is not allowed to apply to non-atomic accesses.
+This seems to mostly involve cases where dependencies must be respected
+only to avoid creating data races, a restriction that applies to
+non-atomic accesses but not to relaxed accesses.}
 
 \subsubsection{Initialization and Cleanup}
 \label{sec:Initialization and Cleanup}
