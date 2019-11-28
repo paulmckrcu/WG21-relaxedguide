@@ -75,18 +75,30 @@ The Indefatigible TBD
 \section{OOTA and RFUB Background}
 \label{sec:OOTA and RFUB Background}
 
-@@@
+There has been considerable work done on OOTA and
+RFUB~\cite{Boehm:2014:OGA:2618128.2618134,PaulEMcKenney2016OOTA,Lahav:2017:RSC:3062341.3062352,Sinclair:2017:CAR:3079856.3080206,HansBoehm2019OOTArevisitedAgain,MarkBatty2019ModularRelaxedDependenciesOOTA}.
+This work has taken place over many years, and builds on prior work
+in the Java community.\footnote{
+	See for example the infamous ``Causality Test Cases''
+	(\url{http://www.cs.umd.edu/~pugh/java/memoryModel/unifiedProposal/testcases.html}).}
 
-Loads of citations and summaries.
+There has long been hope that additional research effort will identify
+a model of OOTA that all can live with, for example, on the part of Paul,
+and that everyone would come to appreciate the relative simplicity of
+strengthening \co{memory_order_relaxed} to forbid prior reads to be
+reordered with later writes, for example, on the part of Hans.
+But in the meantime, \co{memory_order_relaxed} is seeing increased use,
+so that there is a need to identify known-safe usage patterns.
 
-Heuristics, such as single-direction data flow.
+This paper is a first step toward such a set of patterns.
 
 \section{Relaxed Design Patterns}
 \label{sec:Relaxed Design Patterns}
 
-Many taken from Hans's \co{memory-model-design} posting on
-September 4, 2018.\footnote{
+Many of these patterns are taken from Hans's \co{memory-model-design}
+posting on September 4, 2018.\footnote{
 	Message-ID: \co{<CAMOCf+jchGw6DeE2NyCJA3wfFbNH-WFn59JruZPSWt9_jPW9NQ@mail.gmail.com>}.}
+@@@ roadmap @@@
 
 \subsection{Non-Racing Accesses}
 \label{sec:Non-Racing Accesses}
