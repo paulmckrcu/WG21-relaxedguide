@@ -100,12 +100,76 @@ In environments where atomicity is controlled by the access rather
 than the object definition, such accesses are often non-atomic in
 practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
 
-\emph{Hans to supply wording for the weird exceptions where the compiler
-is allowed to apply optimizations to \co{memory_order_relaxed} that it
-is not allowed to apply to non-atomic accesses.
-This seems to mostly involve cases where dependencies must be respected
-only to avoid creating data races, a restriction that applies to
-non-atomic accesses but not to relaxed accesses.}
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 int x = 0;
+ 2 int y = 0;
+ 3
+ 4 void thread1()
+ 5 {
+ 6   if (x)
+ 7     y = 1;
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   if (y)
+13     x = 1;
+14 }
+\end{verbatim}
+\caption{Non-Atomic Accesses Sometimes Respect Control Dependencies}
+\label{lst:Non-Atomic Accesses Sometimes Respect Control Dependencies}
+\end{listing}
+
+However, it is important to note that C++ is required to account only
+for those dependencies that lead to non-atomic stores.
+For example, given concurrent execution of \co{thread1()} and
+\co{thread2()} in
+Listing~\ref{lst:Non-Atomic Accesses Sometimes Respect Control Dependencies},
+the only permitted outcome results in both \co{x} and \co{y} being
+equal to zero.
+The reason for this is that any other outcome must be due to the compiler
+having created a data race, which is forbidden.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 std::atomic<int> x = 0;
+ 2 std::atomic<int> y = 0;
+ 3
+ 4 void thread1()
+ 5 {
+ 6   if (x.load(memory_order_relaxed))
+ 7     y.store(1, memory_order_relaxed);
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   if (y.load(memory_order_relaxed)
+13     x.store(1, memory_order_relaxed);
+14 }
+\end{verbatim}
+\caption{Atomic Accesses Do Not Respect Control Dependencies}
+\label{lst:Atomic Accesses Do Not Respect Control Dependencies}
+\end{listing}
+
+In contrast, the analogous program using C++ atomics is permitted
+by the normative language in the standard to exhibit other behaviors,
+including the one resulting in the final values of both \co{x} and
+\co{y} being \co{1}.
+The phrase ``normative language'' is important because this code fragment
+is considered to be an example of the out-of-thin-air behavior that is
+forbidden by a non-normative note in that same standard
+
+In short, although any non-racing access to an atomic object can be a
+relaxed store, the normative portion of the standard classifies any
+number of non-obvious accesses as racy.
+
+% \emph{Hans to supply wording for the weird exceptions where the compiler
+% is allowed to apply optimizations to \co{memory_order_relaxed} that it
+% is not allowed to apply to non-atomic accesses.
+% This seems to mostly involve cases where dependencies must be respected
+% only to avoid creating data races, a restriction that applies to
+% non-atomic accesses but not to relaxed accesses.}
 
 \subsubsection{Initialization and Cleanup}
 \label{sec:Initialization and Cleanup}
