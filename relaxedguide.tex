@@ -50,7 +50,7 @@ Hans Boehm\\\email{hboehm@google.com} \and
 Paul E.~McKenney\\\email{paulmck@kernel.org} \and
 The Indefatigible TBD
 }
-\date{August 19, 2019}
+\date{November 29, 2019}
 \maketitle{}
 
 \begin{abstract}
@@ -347,7 +347,11 @@ increments can be relaxed in cases where another reference is guaranteed
 to be held throughout.
 
 @@@ This feels like an example of a more general class of patterns,
-but other examples of such a class do not immediately come to mind. @@@
+but other examples of such a class do not immediately come to mind.
+OK, one can imagine things like preprocessed sensor values where these
+values are irrelevant except in their relation to cutoff values.
+Anyone know of actual cases like this?
+@@@
 
 \subsection{Untrusted Loads}
 \label{sec:Untrusted Loads}
@@ -538,6 +542,26 @@ a given reader-writer lock and counter reads while write-holding
 that same lock.
 In all of these cases, OOTA and RFUB behaviors are additionally avoided due
 to the fully synchronized nature of the readout.
+
+\subsubsection{Software Pipelines}
+\label{sec:Software Pipelines}
+
+Software pipelines break computation up into stages that might proceed
+concurrently.
+If the interface between a consecutive pair of stages is simple enough,
+relaxed accesses might be used for the corresponding communication of data.
+Pipelines are not necessarily strictly linear, in fact it can be quite
+advantageous to have concurrent stages feeding into a single subsequent
+stage via a reduction step.
+If the output of the concurrent stages is sufficiently simple, the
+reduction step might be a simple relaxed atomic fetch-and-op operation
+to a single scalar object.
+An example of a sufficiently simple output is event counts emanating from
+concurrent stream processing feeding into later sequential logic.
+
+Note that the independent input and output data patterns discussed in
+Sections~\ref{sec:Independent Input Data} and~\ref{sec:Independent Output Data}
+might be endpoints of a software pipeline.
 
 \subsubsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
@@ -757,15 +781,19 @@ within the C++ standards committee:
 
 More ideation and discussion is needed on this topic.
 
-\section{Use of Relaxed Design Patterns}
-\label{sec:Use of Relaxed Design Patterns}
-
-@@@
+% \section{Use of Relaxed Design Patterns}
+% \label{sec:Use of Relaxed Design Patterns}
+% 
+% @@@
 
 \section{Concluding Remarks}
 \label{sec:Concluding Remarks}
 
-@@@
+This paper starts the work of classifying known-safe design patterns
+involving \co{memory_order_relaxed}.
+It is hoped that this work will be of use in design and code reviews,
+and that it might eventually lead to improved theoretical models of
+\co{memory_order_relaxed} accesses.
 
 
 \bibliographystyle{plain}
