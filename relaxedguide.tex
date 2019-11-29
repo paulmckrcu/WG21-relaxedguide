@@ -60,7 +60,7 @@ The Indefatigible TBD
 	Although there are no known instances of full-blown OOTA
 	behavior, and no known RFUB-induced failures of production code,
 	the theoretical possibility of these properties severely
-	complicate automated analysis of large C and C++ code bases.
+	complicates automated analysis of large C and C++ code bases.
 	Thus far, attempts to eliminate OOTA and RFUB properties from
 	the memory model have resulted in otherwise needless added
 	overheads on weakly ordered systems on the one hand or
@@ -87,8 +87,15 @@ a model of OOTA that all can live with, for example, on the part of Paul,
 and that everyone would come to appreciate the relative simplicity of
 strengthening \co{memory_order_relaxed} to forbid prior reads to be
 reordered with later writes, for example, on the part of Hans.
-But in the meantime, \co{memory_order_relaxed} is seeing increased use,
-so that there is a need to identify known-safe usage patterns.
+In addition, although there is general agreement that OOTA behaviors
+must be forbidden, there is some debate on the need to forbid
+RFUB behaviors.
+Perhaps agreement on these points will be reached, but in the meantime,
+\co{memory_order_relaxed} use is increasing, and thus an increasing need
+to identify known-safe usage patterns.
+In the best case, these usage patterns might be automatically recognized
+in existing code, but at a minimum we hope that this list will be
+useful to code reviewers.
 
 This paper is a first step toward such a set of patterns.
 
@@ -140,8 +147,8 @@ For example, given concurrent execution of \co{thread1()} and
 Listing~\ref{lst:Non-Atomic Accesses Sometimes Respect Control Dependencies},
 the only permitted outcome results in both \co{x} and \co{y} being
 equal to zero.
-The reason for this is that any other outcome must be due to the compiler
-having created a data race, which is forbidden.
+The reason for this is that any other outcome must be due to a
+compiler-created data race, which is forbidden.
 
 \begin{listing}[tbp]
 \begin{verbatim}
@@ -160,21 +167,22 @@ having created a data race, which is forbidden.
 13     x.store(1, memory_order_relaxed);
 14 }
 \end{verbatim}
-\caption{Atomic Accesses Do Not Respect Control Dependencies}
-\label{lst:Atomic Accesses Do Not Respect Control Dependencies}
+\caption{Normative Text Does Not Require Atomics to Respect Control Dependencies}
+\label{lst:Normative Text Does Not Require Atomics to Respect Control Dependencies}
 \end{listing}
 
-In contrast, the analogous program using C++ atomics is permitted
-by the normative language in the standard to exhibit other behaviors,
-including the one resulting in the final values of both \co{x} and
-\co{y} being \co{1}.
+In contrast, in the analogous program using C++ atomics
+(see Listing~\ref{lst:Normative Text Does Not Require Atomics to Respect Control Dependencies}),
+additional behaviors are permitted by the normative language in the
+standard, including the one resulting in the final values of both \co{x}
+and \co{y} being \co{1}.
 The phrase ``normative language'' is important because this code fragment
-is considered to be an example of the out-of-thin-air behavior that is
-forbidden by a non-normative note in that same standard
+is considered to be an example of the OOTA behavior that is forbidden
+by a non-normative note in that same standard.
 
-In short, although any non-racing access to an atomic object can be a
-relaxed store, the normative portion of the standard classifies any
-number of non-obvious accesses as racy.
+In short, although any non-racing access to an atomic object may be
+relaxed, the normative portion of the standard counter-intuitively
+classifies many access patterns as racy.
 
 % \emph{Hans to supply wording for the weird exceptions where the compiler
 % is allowed to apply optimizations to \co{memory_order_relaxed} that it
@@ -190,16 +198,16 @@ Important special cases of this pattern are the single-threaded
 initialization and cleanup phases of an otherwise concurrent program.
 These use cases are one motivation for the strong ordering guarantees
 of thread creation and destruction.
-These guarantees permitt the single-threaded initialization and cleanup
-code to run race free, with no need to consider interference from
-code that runs multithreaded.
+These guarantees permit the single-threaded initialization and cleanup
+code to run race free, with no need to consider interference from the
+intervening code that runs multithreaded.
 
 \subsubsection{Allocator Caches}
 \label{sec:Allocator Caches}
 
 Allocator caches provide per-CPU or per-thread pools of free memory
 in order to provide high-performance scalable memory allocation in
-the common case~\cite{McKenney93}.
+the common case~\cite{McKenney93,Bonwick94slab}.
 Accesses to these pools are normally single-threaded by design for
 reasons of performance and scalability.
 However, objects are often allocated for concurrent algorithms,
@@ -232,17 +240,17 @@ However, some sort of happens-before edge is required for each phase
 transition regardless of which thread is executing any given phase.
 
 In the common case, the transitions requiring other-thread-visible ordering
-are those to and from the "Use" phase.
-In particular, the complexities of transitioning from the "Use" phase
-has inspired safe memory reclamation schemes, including
-reference counting,
+are those to and from the ``Use'' phase.
+In particular, the complexities of transitioning from the ``Use'' phase
+to the ``Cleanup'' phase has inspired safe memory reclamation schemes,
+including reference counting,
 hazard pointers~\cite{Michael02a,HerlihyLM02,MagedMichael04a},
 and RCU~\cite{McKenney98}.
 
 In less-common cases where inter-thread transitions occur between other
-phases, proper synchronization must be required.
-For example, the earlier phase could use a release store and
-the later phase could use an acquire or consume load.
+phases, proper synchronization must be provided.
+For example, the earlier phase might use a release store and
+the later phase might use an acquire or consume load.
 
 \subsubsection{One-Way Memory Allocation}
 \label{sec:One-Way Memory Allocation}
@@ -250,6 +258,8 @@ the later phase could use an acquire or consume load.
 One-way memory allocation provides fresh memory that is never deallocated,
 or that is deallocated using a heavy weight one-sided mechanism, for
 example, a stop-the-world deallocation phase.
+Note that heavy synchronization must be provided upon both entry to and
+exit from the stop-the-world phase.
 
 \begin{listing}[tbp]
 \begin{verbatim}
@@ -305,8 +315,8 @@ RFUB behavior.
 
 Note well that a group of single-location data structures might well
 interact in a way that could raise the spectre of OOTA or RFUB.
-Design review should therefore pay careful attention to information
-flow.
+As before, design review should therefore pay careful attention to
+information flow.
 
 \subsection{Shared Fences}
 \label{sec:Shared Fences}
@@ -336,6 +346,9 @@ Because only the one-to-zero transition requires ordering, reference-count
 increments can be relaxed in cases where another reference is guaranteed
 to be held throughout.
 
+@@@ This feels like an example of a more general class of patterns,
+but other examples of such a class do not immediately come to mind. @@@
+
 \subsection{Untrusted Loads}
 \label{sec:Untrusted Loads}
 
@@ -343,6 +356,9 @@ In many cases, it is acceptable for a load from an atomic shared variable
 to occasionally return random bits because the value is checked by
 some later operation.
 In such cases, the load can be a relaxed load.
+
+\subsubsection{Pre-Load for Compare and Swap}
+\label{sec:Pre-Load for Compare and Swap}
 
 Perhaps the most well-known later checking operation is a non-relaxed
 compare-and-swap (CAS).
@@ -354,16 +370,16 @@ relaxed load, with the CAS operation's ordering preventing OOTA and RFUB
 behaviors.
 Relaxed CAS operations need to be part of some other design pattern
 (for example, the shared fences pattern called out in
-Section~\ref{sec:Shared Fences}
-if they are to be OOTA/RFUB-free in conjunction with an initial relaxed
-load.
+Section~\ref{sec:Shared Fences})
+if cycles containing them are to be guaranteed to be OOTA/RFUB-free in
+conjunction with an initial relaxed load.
 One common design pattern is the single-location data structure discussed in
 Section~\ref{sec:Single-Location Data Structures}.
 
 Additional examples are presented by
 Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
 
-\subsection{Sequence Locking}
+\subsubsection{Sequence Locking}
 \label{sec:Sequence Locking}
 
 The accesses within a sequence-locking read-side critical section
@@ -373,9 +389,9 @@ Assuming that sequence-locking readers never store to shared memory,
 this not only prevents the surfacing of any OOTA or RFUB cycles, but
 also of any other non-SC behaviors.
 
-Note that there is a proposal\footnote{
+Note that a proposal\footnote{
 	\url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1478r0.html}}
-to provide an \co{atomic_load_per_byte_memcpy()} that allows safe
+provides an \co{atomic_load_per_byte_memcpy()} that allows safe
 non-atomic access to data for sequence-lock readers, as well as an
 \co{atomic_store_per_byte_memcpy()} to update that same data by
 sequence-lock updaters.
@@ -383,11 +399,16 @@ It is nevertheless quite possible that some sequence-lock readers
 might continue to use relaxed atomics in order to permit reliable
 computations within readers in the presence of data objects having
 trap representations.
+Furthermore, more-complex sequence-locking use cases may need to
+use relaxed accesses for other
+reasons~\cite{NeilBrown2015PathnameLookup,NeilBrown2015RCUwalk}.
 
 \subsection{Unidirectional Data Flow}
 \label{sec:Unidirectional Data Flow}
 
 If data flows only in one direction, then OOTA cycles cannot form.
+The following sections give several examples of this general design
+pattern.
 
 \subsubsection{Independent Input Data}
 \label{sec:Independent Input Data}
@@ -471,7 +492,7 @@ RFUB behavior to manifest.
 \label{lst:Statistical-Counter Abuse and OOTA}
 \end{listing}
 
-And example abuse is shown in
+An example abuse is shown in
 Listing~\ref{lst:Statistical-Counter Abuse and OOTA}.
 Lines~1 and~2 define a pair of statistical counters \co{a} and \co{b}.
 The \co{thread1()} and co{thread2()} functions form a classic
@@ -490,12 +511,23 @@ we could in theory see the following OOTA sequence of events:
 
 Of course, the code in
 Listing~\ref{lst:Statistical-Counter Abuse and OOTA}
-is nonsensical: Counters should count events, not each others's cumulative
-values.
+is complete nonsense: Counters should count events, not each others's
+cumulative values.
 The code as written is about as useful as the proverbial screen door in
 a submarine.
 Problems of this sort should be located in a code review, or better yet
-during the preceding design review.
+during the preceding design review.\footnote{
+	Yes, this could be considered analogous to a difference-equation
+	control system.
+	But in that case, the system being controlled is part of the
+	loop, and proper synchronization must be used when communicating
+	with that system.
+	In addition, the actual difference-equation computation will
+	normally be single-threaded.
+	More importantly, if the system being controlled might pose a threat
+	to life and limb, the design review had jolly well better be
+	sufficiently well-informed and thorough as to avoid this sort
+	of problem.}
 
 Exact values are sometimes obtained from statistical counters in
 stop-the-world situations, such as checking for consistent results
@@ -510,16 +542,16 @@ to the fully synchronized nature of the readout.
 \subsubsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
 
-\emph{Note:} There is some debate on this design pattern.
+\emph{Note:} There is some debate as to the validity of this design pattern.
 
 A re-entrant exclusive mutex must track its owner in order to avoid
-self-deadlock when the owner re-acquires the mutex it already holds.
-This owner field is updated only while the lock is held, and its value
+self-deadlock when the owner re-acquires a mutex that it already holds.
+This owner field is updated only while the mutex is held, and its value
 is used only to compare for equality to the current thread's ID.
-Before releasing the lock, the owner writes a special ID to the owner
+Before releasing the mutex, the owner writes a special ID to the owner
 field that is guaranteed not to match the ID of any thread.
 Other threads can access the owner concurrently with the owner's
-update, so the owner field must be an atomic in order to avoid data races.
+update, so the owner field must be atomic in order to avoid data races.
 
 However, the only time that the owner field can be equal to the thread ID
 is when that thread carried out the last update to the owner field and
@@ -529,26 +561,25 @@ still holds the mutex:
 \item	Each thread writes only its ID or the special ID.
 \item	Because \co{memory_order_relaxed} loads are single-variable
 	SC, and because each thread sets the owner field to the special
-	ID before releasing the lock, a given thread cannot see its own
-	ID unless it still holds the lock.
+	ID before releasing the mutex, a given thread cannot see its own
+	ID unless it still holds the mutex.
 \item	Because atomic accesses forbid load tearing, each load from
-	the owner field will return either the initial value
-	(which is the special ID) or some value written by some
-	thread holding the lock.
-\item	Therefore, when a thread is not holding the lock, it is guaranteed
+	the owner field will return either the special ID or the thread
+	ID corresponding to some thread that recently held the mutex.
+\item	Therefore, when a thread is not holding the mutex, it is guaranteed
 	not to load its own ID from the owner field.
 \end{enumerate}
 
-No other thread is allowed to write to the owner field while the lock
+No other thread is allowed to write to the owner field while the mutex
 is held, so it is impossible to form the cycles required for OOTA or
-RFUB behavior to manifest.\footnote{
-	In fact, the accesses to the owner field and the mutex's acquire
-	and release operations will be sequentially consistent.}
+RFUB behavior to manifest.
 Therefore, both the reads from and the writes to the owner field
 may use \co{memory_order_relaxed}.
 
 This is a special case of unidirectional data flow, with the data flowing
-from the lock holder to threads not holding the lock.
+from the mutex holder to threads not holding the mutex.
+The mutual exclusion provided by the mutex prevents any OOTA or RFUB
+cycles from forming.
 
 % More generally, if an object is written only while a given mutex is
 % held, all accesses to that object may be relaxed without the possibility
@@ -590,6 +621,10 @@ in practice, current implementations avoid such behaviors.
 
 @@@ TBD, but believed to be subject to OOTA and RFUB. @@@
 
+@@@ Does use of things like \co{sys_membarrier()} alleviate this issue
+by providing strong ordering without impeding allocation and traversal
+in the common case?  @@@
+
 \section{Attributes of Relaxed Design Patterns}
 \label{sec:Attributes of Relaxed Design Patterns}
 
@@ -611,32 +646,41 @@ in practice, current implementations avoid such behaviors.
 	\\
 %				  MT  CWW   CRW    BC   BD   FV    UC
 	\cmidrule(r){1-1} \cmidrule{2-8}
-	Untrusted Loads		&  Y & \x &   Y  &  Y & \x & \x &  \x \\
-	Mutex Owner Field	&  Y & \x &   Y  &  Y & \x & \x &  \x \\
-	Statistical Counters	&  Y & \x &   Y  & \x & \x & \x &  \x \\
-	Single-Location
-	   Data Structures	&  Y &  Y &   Y  &  Y &  Y &  Y &  \x \\
-	Single-Threaded
-	   Processing Phases	& \x & \x &  \x  & \x & \x & \x &  \x \\
-	Shared Fences		&  Y &  Y &   Y  & \x & \x & \x &  \x \\
-	One-Way Memory
-	   Allocation		&  Y &  Y &  \x  & \x & \x & \x &  \x \\
-	Allocator Caches	& \x & \x &  \x  & \x & \x & \x &  \x \\
-	Sequence Locking	&  Y & \x &   Y  & \x &  Y & \x &  \x \\
-	Java Hashcode Access	&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
-	Atomic Reference-Count
-	   Updates		&  Y &  Y &   Y  & \x & \x &  Y &  \x \\
-	Chaotic Relaxation	&  Y &  Y &   Y  & \x & \x & \x &   Y \\
-	Garbage Collection	&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+	Non-Racing Accesses (Section~\ref{sec:Non-Racing Accesses})
+				&  Y & \x &  \x  & \x & \x & \x &  \x \\
+	Single-Location Data Structures (Section~\ref{sec:Single-Location Data Structures})
+				&  Y &  Y &   Y  & \x & \x & \x &  \x \\
+	Shared Fences (Section~\ref{sec:Shared Fences})
+				&  Y &  Y &   Y  & \x & \x & \x &  \x \\
+	Atomic Reference-Count Updates (Section~\ref{sec:Atomic Reference-Count Updates})
+				&  Y &  Y &   Y  & \x & \x &  Y &  \x \\
+	Untrusted Loads (Section~\ref{sec:Untrusted Loads})
+				&  Y & \x &   Y  &  y &  y &  y &  \x \\
+	Unidirectional Data Flow (Section~\ref{sec:Unidirectional Data Flow})
+				&  Y & \x &   Y  & \x & \x & \x &  \x \\
+	Java Hashcode Access (Section~\ref{sec:Java Hashcode Access})
+				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
+				&  Y &  Y &   Y  & \x & \x &  Y &   Y \\
+	Garbage Collection (Section~\ref{sec:Garbage Collection})
+				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+%	Mutex Owner Field	&  Y & \x &   Y  &  Y & \x & \x &  \x \\
+%	Statistical Counters	&  Y & \x &   Y  & \x & \x & \x &  \x \\
+%	Single-Threaded
+%	   Processing Phases	& \x & \x &  \x  & \x & \x & \x &  \x \\
+%	One-Way Memory
+%	   Allocation		&  Y &  Y &  \x  & \x & \x & \x &  \x \\
+%	Allocator Caches	& \x & \x &  \x  & \x & \x & \x &  \x \\
+%	Sequence Locking	&  Y & \x &   Y  & \x &  Y & \x &  \x \\
 	\bottomrule
 \end{tabular}
-\caption{Attributes of Relaxed Design Patterns}
-\label{tab:Attributes of Relaxed Design Patterns}
+\caption{Attributes of Categories of Relaxed Design Patterns}
+\label{tab:Attributes of Categories of Relaxed Design Patterns}
 \end{table}
 
 @@@ Update @@@
 
-Table~\ref{tab:Attributes of Relaxed Design Patterns}
+Table~\ref{tab:Attributes of Categories of Relaxed Design Patterns}
 shows attributes of design patterns.
 The attributes are as follows:
 
