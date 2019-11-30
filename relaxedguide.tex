@@ -403,9 +403,15 @@ It is nevertheless quite possible that some sequence-lock readers
 might continue to use relaxed atomics in order to permit reliable
 computations within readers in the presence of data objects having
 trap representations.
-Furthermore, more-complex sequence-locking use cases may need to
-use relaxed accesses for other
-reasons~\cite{NeilBrown2015PathnameLookup,NeilBrown2015RCUwalk}.
+
+Furthermore, sophisticated sequence-locking use cases may need to
+use relaxed accesses for other reasons.
+For example, the Linux kernel's lockless path-to-\co{inode} traversal uses
+the closely related sequence counters to detect large-scale changes
+to the filesystem tree that would otherwise confuse this
+traversal~\cite{NeilBrown2015PathnameLookup,NeilBrown2015RCUwalk}.
+Such confusion could result is a number of anomalies, including successful
+lookup of paths that never actually existed.
 
 \subsection{Unidirectional Data Flow}
 \label{sec:Unidirectional Data Flow}
@@ -627,7 +633,10 @@ Note well that this design pattern is outside of the current standard.
 \label{sec:Java Hashcode Access}
 
 \emph{[ Does this apply to C or C++?
-Yes, because this portion of Java is written in C++. ]}
+Yes, because this portion of Java is written in C++.\footnote{
+	Documented here:
+	\url{https://docs.oracle.com/javase/7/docs/api/java/lang/Object.html}.}
+]}
 
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
@@ -636,6 +645,8 @@ There are a number of iterative numerical algorithms for which unsynchronized
 access does not slow convergence as much as waits for barrier synchronization.
 These algorithms can use relaxed loads and stores to update the numerical
 data~\cite{Andrews91textbook}.
+The idea is that the iterative convergence tests correct any small errors
+due to accessing data from some other iteration.
 
 In theory, these algorithms are subject to OOTA and RFUB behaviors, however,
 in practice, current implementations avoid such behaviors.
@@ -666,7 +677,7 @@ in the common case?  @@@
 	& \rothead{Concurrent RW}
 	& \rothead{~~~~But Checked}
 	& \rothead{~~~~But Discarded}
-	& \rothead{~~~~Fungible Values}
+	& \rothead{~~~~But Fungible}
 	& \rothead{Unordered Cycle}
 	\\
 %				  MT  CWW   CRW    BC   BD   FV    UC
@@ -686,7 +697,7 @@ in the common case?  @@@
 	Java Hashcode Access (Section~\ref{sec:Java Hashcode Access})
 				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
 	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
-				&  Y &  Y &   Y  & \x & \x &  Y &   Y \\
+				&  Y &  Y &   Y  &  Y & \x & \x &   Y \\
 	Garbage Collection (Section~\ref{sec:Garbage Collection})
 				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
 %	Mutex Owner Field	&  Y & \x &   Y  &  Y & \x & \x &  \x \\
@@ -724,14 +735,22 @@ The attributes are as follows:
 	concurrent relaxed writes.
 \item	\emph{But Checked:}  The values from the concurrent reads are
 	checked if there might have been a concurrent write.
+	See for example
+	Section~\ref{sec:Pre-Load for Compare and Swap}.
 \item	\emph{But Discarded:}  The values from the concurrent reads are
 	discarded if there might have been a concurrent write.
+	See for example Section~\ref{sec:Sequence Locking}.
 \item	\emph{But Fungible:}  The values from the concurrent reads are
 	fungible if there might have been a concurrent write,
 	that is, a fixed decision guaranteed to be made based on any
-	value from a read that might have run concurrently with a write.
+	value that could have been returned from a read that might have
+	run concurrently with a write.
 	See for example the restricted reference-counting example from
 	Section~\ref{sec:Atomic Reference-Count Updates}.
+
+	In all of these ``But'' columns, lower case ``y'' indicates
+	that some examples in the category might possess the corresponding
+	attribute.
 \item	\emph{Unordered Cycle:}  The design pattern can produce an
 	unordered cycle in and of itself.
 	Of course, a combination of design patterns that individually
