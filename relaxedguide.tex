@@ -219,7 +219,7 @@ lock is write-held and read only when that same lock is either
 read-held or write-held may also be accessed using
 \co{memory_order_relaxed} accesses, or, again, using non-atomic accesses.
 
-Of course, non-atomic accesses are almost always used with pure locking
+Of course, non-atomic accesses are almost always used with pure locking.
 However, \co{memory_order_relaxed} accesses are sometimes quite useful,
 for example, in cases where objects pass through a software pipeline,
 where one stage uses pure locking and another stage relies on atomic
@@ -265,16 +265,24 @@ of \co{atomic_thread_fence()}.
 In certain reference-count use cases, the ordering of the increments and
 decrements is irrelevant.
 One common case is where it is only legal to increment the reference
-count when you already have a reference, in which case the count cannot
-possibly decrease to zero in the meantime.
+count when the incrementing thread already holds a reference, in which
+case the count cannot possibly decrease to zero in the meantime.
 Because only the one-to-zero transition requires ordering, reference-count
 increments can be relaxed in cases where another reference is guaranteed
 to be held throughout.
 
-Note that a thread releasing its last reference is forbidden from
-using a relaxed operation to do so, because in that case there is
-no guarantee that another reference is guaranteed to be held
-throughout.
+Similarly, reference-count decrements can also be relaxed, but only if
+the thread will still hold at least one reference after the decrement.
+In other words, a thread releasing its last reference is forbidden
+from using a relaxed operation to do so, because in that case there
+is no guarantee that another reference is guaranteed to be held
+throughout.\footnote{
+	More elaborate variants of this pattern allow these rules to
+	be relaxed.
+	For example, if a parent thread is guaranteed not to release
+	its last reference until after joining with its child threads,
+	then those child threads may use relaxed decrements to release
+	their final reference.}
 
 We suspect that this is an example of a more general class of patterns,
 but other examples of such a class do not immediately come to mind.
@@ -610,7 +618,8 @@ pointer manipulation alone.\footnote{
 However, OOTA cycles can form based on the pointer values returned from
 such an allocator and from dereferences of these pointers.
 Adventurous readers can find an early drafty draft analysis of this
-situation in Appendix~\ref{sec:Allocator Caches}.
+situation (but on a more complicated allocator) in
+Appendix~\ref{sec:Allocator Caches}.
 
 In the meantime, code reviewers should view relaxed stores of pointers to
 newly allocated objects with great suspicion.
