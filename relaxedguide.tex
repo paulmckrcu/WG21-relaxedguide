@@ -99,6 +99,16 @@ useful to code reviewers.
 
 This paper is a first step toward such a set of patterns.
 
+The term \emph{full C++} refers to the C++20 memory model as stated in
+the current draft.
+The term \emph{strict C++} refers to the subset of full C++ obtained by
+dropping the following vague ``normative encouragement'' from the C++20
+memory model:
+``Implementations should ensure that no "out-of-thin-air" values are
+computed that circularly depend on their own computation.''
+Some (but not all) of the proto-patterns in this document are
+safe in strict C++, but all of them are safe in full C++.
+
 \section{Relaxed Design Patterns}
 \label{sec:Relaxed Design Patterns}
 
@@ -140,14 +150,13 @@ practice~\cite{JadeAlglave2019WhoAfraidCompiler}.
 \label{lst:Non-Atomic Accesses Sometimes Respect Control Dependencies}
 \end{listing}
 
-However, it is important to note that C++ is required to account only
-for those dependencies that lead to non-atomic stores.
 For example, given concurrent execution of \co{thread1()} and
 \co{thread2()} in
 Listing~\ref{lst:Non-Atomic Accesses Sometimes Respect Control Dependencies},
 the only permitted outcome results in both \co{x} and \co{y} being
-equal to zero.
-The reason for this is that any other outcome must be due to a
+equal to zero in both full C++ and strict C++.
+Any other outcome would violate the ``sequential +consistency for
+data race free programs'' principle, and must effectively be due to a
 compiler-created data race, which is forbidden.
 
 \begin{listing}[tbp]
@@ -167,29 +176,22 @@ compiler-created data race, which is forbidden.
 13     x.store(1, memory_order_relaxed);
 14 }
 \end{verbatim}
-\caption{Normative Text Does Not Require Atomics to Respect Control Dependencies}
-\label{lst:Normative Text Does Not Require Atomics to Respect Control Dependencies}
+\caption{Strict C++ Does Not Require Atomics to Respect Control Dependencies}
+\label{lst:Strict C++ Does Not Require Atomics to Respect Control Dependencies}
 \end{listing}
 
 In contrast, in the analogous program using C++ atomics
-(see Listing~\ref{lst:Normative Text Does Not Require Atomics to Respect Control Dependencies}),
-additional behaviors are permitted by the normative language in the
-standard, including the one resulting in the final values of both \co{x}
+(see Listing~\ref{lst:Strict C++ Does Not Require Atomics to Respect Control Dependencies}),
+additional behaviors are permitted by strict C++,
+including the one resulting in the final values of both \co{x}
 and \co{y} being \co{1}.
-The phrase ``normative language'' is important because this code fragment
+The restriction to ``strict C++'' is important because this code fragment
 is considered to be an example of the OOTA behavior that is forbidden
-by a non-normative note in that same standard.
+by the normative encouragement in that same standard.
 
 In short, although any non-racing access to an atomic object may be
-relaxed, the normative portion of the standard counter-intuitively
-classifies many access patterns as racy.
-
-% \emph{Hans to supply wording for the weird exceptions where the compiler
-% is allowed to apply optimizations to \co{memory_order_relaxed} that it
-% is not allowed to apply to non-atomic accesses.
-% This seems to mostly involve cases where dependencies must be respected
-% only to avoid creating data races, a restriction that applies to
-% non-atomic accesses but not to relaxed accesses.}
+relaxed, strict C++ counter-intuitively classifies many access patterns
+as racy.
 
 \subsubsection{Initialization and Cleanup}
 \label{sec:Initialization and Cleanup}
@@ -345,6 +347,11 @@ possibly decrease to zero in the meantime.
 Because only the one-to-zero transition requires ordering, reference-count
 increments can be relaxed in cases where another reference is guaranteed
 to be held throughout.
+
+Note that a thread releasing its last reference is forbidden from
+using a relaxed operation to do so, because in that case there is
+no guarantee that another reference is guaranteed to be held
+throughout.
 
 @@@ This feels like an example of a more general class of patterns,
 but other examples of such a class do not immediately come to mind.
@@ -505,7 +512,7 @@ RFUB behavior to manifest.
 An example abuse is shown in
 Listing~\ref{lst:Statistical-Counter Abuse and OOTA}.
 Lines~1 and~2 define a pair of statistical counters \co{a} and \co{b}.
-The \co{thread1()} and co{thread2()} functions form a classic
+The \co{thread1()} and \co{thread2()} functions form a classic
 data-dependent OOTA cycle.
 Assuming both statistical counters start out with all counters zero,
 we could in theory see the following OOTA sequence of events:
@@ -572,7 +579,9 @@ might be endpoints of a software pipeline.
 \subsubsection{Owner Field for Re-Entrant Mutex}
 \label{sec:Owner Field for Re-Entrant Mutex}
 
-\emph{Note:} There is some debate as to the validity of this design pattern.
+\emph{Note:} This analysis does not take into account the possibility of
+circular self-justifying propagation of undefined behavior.
+% @@@ Cite David Goldblatt's paper.
 
 A re-entrant exclusive mutex must track its owner in order to avoid
 self-deadlock when the owner re-acquires a mutex that it already holds.
@@ -629,14 +638,49 @@ consuming it.
 
 Note well that this design pattern is outside of the current standard.
 
-\subsection{Java Hashcode Access}
-\label{sec:Java Hashcode Access}
+\subsection{Java-Style Hashcode Access}
+\label{sec:Java-Style Hashcode Access}
 
-\emph{[ Does this apply to C or C++?
-Yes, because this portion of Java is written in C++.\footnote{
+Given the ``Java'' in the title, it is only natural to ask why this
+applies to C or C++.
+The answer is simple:
+It applies because this portion of Java is written in C++.\footnote{
 	Documented here:
 	\url{https://docs.oracle.com/javase/7/docs/api/java/lang/Object.html}.}
-]}
+
+Java-style hashcode access can be used to track values that are expensive
+to compute and not known until runtime on the one hand, but immutable
+and deterministic on the other.
+A natural way to handle this situation is to have each access check
+to see if the desired value has already been computed, and, if not,
+compute the value and store it for later use.
+Of course, it is possible that two threads might concurrently load
+the initial not-yet-computed value, in which case, both threads
+will compute the value and store it.
+This does waste CPU time, but this waste is often greatly outweighed by
+reduced synchronization cost.
+This reduced synchronization cost is due to the \co{memory_order_relaxed}
+loads and stores used to access the value.
+After all, the fact that the values are deterministic means that
+the two threads will be storing the same value, so strongly ordered
+stores provide no benefit.
+Furthermore, any other thread is guaranteed to see either the
+before-computation initial value or the exact same computed value.
+
+Given that each value is deterministic, there cannot be a cyclic chain
+of interdependent values, so this pattern works in both full C++ and in
+strict C++.
+
+This pattern must be used with caution in cases where the value is
+a pointer to allocated memory, especially if that memory is allocated
+and initialized at runtime.
+First, racing initializations will result in one-time memory leaks.
+Second, a store of a pointer to recently initialized memory should
+be a \co{memory_order_release} store or stronger, and the corresponding
+loads should be \co{memory_order_consume} loads or stronger.
+Therefore, this pattern might not be helpful when the immutable and
+deterministic values are linked data structures, but it is often used
+for scalar values.
 
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
@@ -654,12 +698,28 @@ in practice, current implementations avoid such behaviors.
 \subsection{Garbage Collection}
 \label{sec:Garbage Collection}
 
-@@@ TBD, but believed to be subject to OOTA and RFUB, though not
-observed in practice. @@@
+By definition, concurrent garbage collectors read pointers in th
+user's heap while the application is running.
+On weakly ordered machines, such accesses {\it must} use
+\co{memory_order_relaxed} accesses, since anything else would require
+all pointer accesses by the user program to be ordered, which is usually
+far too expensive.
+Since such collectors often both read and write heap pointers, it is
+currently difficult or impossible to strictly preclude OOTA in strict C++.
+However, neither OOTA nor RFUN behavior has been observed in practice.
 
-@@@ Does use of things like \co{sys_membarrier()} alleviate this issue
-by providing strong ordering without impeding allocation and traversal
-in the common case?  @@@
+Note that although such garbage collection for C++ is rare, such garbage
+collectors, e.g. for Java, are often implemented in C++.
+
+% @@@ Does use of things like \co{sys_membarrier()} alleviate this issue
+% by providing strong ordering without impeding allocation and traversal
+% in the common case?  @@@
+% I don't think so. There's not a natural place to put a sys_membarrier.
+% Performance on both sides is critical. Depending on the collector, there
+% is also a consume-like issue. The main issue is again that if the collector
+% speculatively reads a non-pointer, and thinks it's a pointer, it may write
+% random locations, potentially justifying the bad speculation.
+% @@@ I was afraid of that...
 
 \section{Attributes of Relaxed Design Patterns}
 \label{sec:Attributes of Relaxed Design Patterns}
@@ -670,7 +730,7 @@ in the common case?  @@@
 \newcommand{\rothead}[1]{\begin{picture}(6,70)(0,0)\rotatebox{90}{#1}\end{picture}}
 \small
 \centering
-\begin{tabular}{lccccccc}
+\begin{tabular}{lcccccccc}
 	\toprule
 	& \rothead{Multiple Threads}
 	& \rothead{Concurrent WW}
@@ -679,27 +739,28 @@ in the common case?  @@@
 	& \rothead{~~~~But Discarded}
 	& \rothead{~~~~But Fungible}
 	& \rothead{Unordered Cycle}
+	& \rothead{Strict-C++ Safe}
 	\\
-%				  MT  CWW   CRW    BC   BD   FV    UC
-	\cmidrule(r){1-1} \cmidrule{2-8}
+%				  MT  CWW   CRW    BC   BD   FV    UC SCS
+	\cmidrule(r){1-1} \cmidrule{2-9}
 	Non-Racing Accesses (Section~\ref{sec:Non-Racing Accesses})
-				&  Y & \x &  \x  & \x & \x & \x &  \x \\
+				&  Y & \x &  \x  & \x & \x & \x &  \x & Y \\
 	Single-Location Data Structures (Section~\ref{sec:Single-Location Data Structures})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x & Y \\
 	Shared Fences (Section~\ref{sec:Shared Fences})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x & Y \\
 	Atomic Reference-Count Updates (Section~\ref{sec:Atomic Reference-Count Updates})
-				&  Y &  Y &   Y  & \x & \x &  Y &  \x \\
+				&  Y &  Y &   Y  & \x & \x &  Y &  \x & Y \\
 	Untrusted Loads (Section~\ref{sec:Untrusted Loads})
-				&  Y & \x &   Y  &  y &  y &  y &  \x \\
+				&  Y & \x &   Y  &  y &  y &  y &  \x & ? \\
 	Unidirectional Data Flow (Section~\ref{sec:Unidirectional Data Flow})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x \\
-	Java Hashcode Access (Section~\ref{sec:Java Hashcode Access})
-				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x & y \\
+	Java-Style Hashcode Access (Section~\ref{sec:Java-Style Hashcode Access})
+				&  Y &  Y &   Y  &  N &  N &  Y &  \x & Y \\
 	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
-				&  Y &  Y &   Y  &  Y & \x & \x &   Y \\
+				&  Y &  Y &   Y  &  Y & \x & \x &   Y & ? \\
 	Garbage Collection (Section~\ref{sec:Garbage Collection})
-				&  ? &  ? &   ?  &  ? &  ? &  ? &   ? \\
+				&  Y &  Y &   Y  &  N &  N &  N &   ? & ? \\
 %	Mutex Owner Field	&  Y & \x &   Y  &  Y & \x & \x &  \x \\
 %	Statistical Counters	&  Y & \x &   Y  & \x & \x & \x &  \x \\
 %	Single-Threaded
@@ -740,12 +801,17 @@ The attributes are as follows:
 \item	\emph{But Discarded:}  The values from the concurrent reads are
 	discarded if there might have been a concurrent write.
 	See for example Section~\ref{sec:Sequence Locking}.
-\item	\emph{But Fungible:}  The values from the concurrent reads are
-	fungible if there might have been a concurrent write,
-	that is, a fixed decision guaranteed to be made based on any
-	value that could have been returned from a read that might have
-	run concurrently with a write.
-	See for example the restricted reference-counting example from
+\item	\emph{But Fungible:}  A set of writers are fungible if
+	a reader running concurrently with those writers will exhibit
+	the same behavior regardless of which of those writes' values
+	that read returns.
+	An important special case is when all the writers are storing
+	the same value, as discussed in
+	Section~\ref{sec:Java-Style Hashcode Access}.
+	Another important special case is where readers take one
+	action if the value is (say) zero and another for any
+	non-zero value, and all concurrent writers will write
+	a non-zero value, as discussed in
 	Section~\ref{sec:Atomic Reference-Count Updates}.
 
 	In all of these ``But'' columns, lower case ``y'' indicates
@@ -758,6 +824,10 @@ The attributes are as follows:
 	produce an unordered cycle when used in combination.
 	Design and code reviews should therefore carefully consider
 	ordering at the intersection of multiple design patterns.
+\item	\emph{Strict-C++ Safe:} The design pattern is expected to
+	work correctly in Strict C++ as well as in Full C++.
+	A lower case ``y'' indicates that only some examples in the
+	category are agreed to be safe for Strict C++.
 \end{enumerate}
 
 \section{Marking of Relaxed Design Patterns}
