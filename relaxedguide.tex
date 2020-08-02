@@ -246,15 +246,36 @@ information flow.
 \subsection{Shared Fences}
 \label{sec:Shared Fences}
 
-The \co{atomic_thread_fence()} function can be used to order
-multiple sets of accesses, for example, by replacing a series of
-acquire loads with relaxed loads followed by an
-\co{atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}
-or a series of release stores with an
+The \co{atomic_thread_fence()} function can be used to order multiple
+accesses.
+
+For example, consider a series of acquire loads that are intended to provide
+order against subsequent accesses, but not against each other.
+Because the compiler will normally not be able to determine that the
+acquire loads need not be ordered against each other, on some platforms
+this will result in a memory-fence instruction being emitted after each
+and every acquire load, when only the last fence is required.
+These unnecessary fences can be avoided by replacing the acquire
+loads with relaxed loads followed by a single
+\co{atomic_thread_fence(memory_order_acquire)}~\cite[Section 4.1]{RaulSilvera2007WeakMemoryModel}.
+This will have the desired effect of ordering all of these loads with any
+subsequent accesses, while also avoiding the overhead of the redundant
+fence instructions that would be expected from the acquire loads.
+
+Similarly, consider a series of release stores that are intended to provide
+order against prior accesses, but not against each other.
+Again, the compiler might emit a memory-fence instruction before
+each of the stores, when only the first fence is required.
+These unnecessary fences can be avoided by replacing the release
+stores with relaxed stores preceded by a single
 \co{atomic_thread_fence(memory_order_release)} followed by
 a series of relaxed stores~\cite[Section 4.2]{RaulSilvera2007WeakMemoryModel}.
+This will have the desired effect of ordering all of these stores with any
+prior accesses, while also avoiding the overhead of any redundant
+fence instructions emitted for the release stores.
+
 In many cases, other ordered atomic operations may be substituted for
-the fence operations.
+the \co{atomic_thread_fence()} operations.
 
 In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
 of \co{atomic_thread_fence()}.
