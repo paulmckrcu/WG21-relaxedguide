@@ -598,9 +598,10 @@ UB can back-propagate in time, which could quite possibly result
 in the threads each seeing their own values in the owner field, which
 is what instigated the UB in the first place.\footnote{
 	Full disclosure: Paul wrote this paragraph, and he is not
-	completely sold on back-propagating self-justifying UB.
-	The critical reader should therefore review David Goldblatt's
-	working paper~\cite{DavidGoldblatt2019NoElegantOOTA}.}
+	completely sold on back-propagating self-justifying UB.  The
+	critical reader should therefore review both David Goldblatt's
+	working paper~\cite{DavidGoldblatt2019NoElegantOOTA} and Hans
+	Boehm's recent proposal~\cite{HansBoehm2020ConcurrentUB}.}
 
 % @@@ Hans: How can memory_order_load_store help?  If all of the
 %	accesses in the critical section are non-atomic, then
