@@ -760,22 +760,22 @@ collectors, e.g. for Java, are often implemented in C++.
 	& \rothead{~~~~But Discarded}
 	& \rothead{~~~~But Fungible}
 	& \rothead{Unordered Cycle}
-	& \rothead{Strict C++ Unsafe}
+	& \rothead{Strict C++ Safe}
 	\\
-%				  MT  CWW   CRW    BC   BD   FV    UC SCU
+%				  MT  CWW   CRW    BC   BD   FV    UC SCS
 	\cmidrule(r){1-1} \cmidrule{2-9}
 	Non-Racing Accesses (Section~\ref{sec:Non-Racing Accesses})
-				&  Y & \x &  \x  & \x & \x & \x &  \x & \x \\
+				&  Y & \x &  \x  & \x & \x & \x &  \x &  Y \\
 	Single-Location Data Structures (Section~\ref{sec:Single-Location Data Structures})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x & \x \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x &  Y \\
 	Shared Fences (Section~\ref{sec:Shared Fences})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x & \x \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x &  Y \\
 	Atomic Reference-Count Updates (Section~\ref{sec:Atomic Reference-Count Updates})
-				&  Y &  Y &   Y  & \x & \x &  Y &  \x & \x \\
+				&  Y &  Y &   Y  & \x & \x &  Y &  \x &  Y \\
 	Untrusted Loads (Section~\ref{sec:Untrusted Loads})
-				&  Y & \x &   Y  &  y &  y &  y &  \x & \x \\
+				&  Y & \x &   Y  &  y &  y &  y &  \x &  Y \\
 	Unidirectional Data Flow (Section~\ref{sec:Unidirectional Data Flow})
-				&  Y &  Y &   Y  & \x & \x & \x &  \x & \x \\
+				&  Y &  Y &   Y  & \x & \x & \x &  \x &  Y \\
 	Java-Style Hashcode Access (Section~\ref{sec:Java-Style Hashcode Access})
 				&  Y &  Y &   Y  &  N &  N &  Y &  \x & \x \\
 	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
@@ -848,9 +848,8 @@ The attributes are as follows:
 	produce an unordered cycle when used in combination.
 	Design and code reviews should therefore carefully consider
 	ordering at the intersection of multiple design patterns.
-\item	\emph{Strict C++ Unsafe:} ``Y'' indicates that the design pattern
-	is expected to work correctly in full C++, but not necessarily in
-	strict C++.
+\item	\emph{Strict C++ Safe:} ``Y'' indicates that the design pattern is
+	expected to work correctly in strict C++ as well as in strict C++.
 	A lower case ``y'' indicates that only some examples in the
 	category are agreed to be safe for strict C++, in which case
 	the examples that are believe to be unsafe for strict C++ are
