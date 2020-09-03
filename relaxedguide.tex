@@ -659,8 +659,8 @@ consuming it.
 
 Note well that this design pattern is outside of the current standard.
 
-\subsection{Java-Style Hashcode Access}
-\label{sec:Java-Style Hashcode Access}
+\subsection{Java-Style Lazy Scalar Initialization}
+\label{sec:Java-Style Lazy Scalar Initialization}
 
 Given the ``Java'' in the title, it is only natural to ask why this
 applies to C or C++.
@@ -669,9 +669,9 @@ It applies because this portion of Java is written in C++.\footnote{
 	Documented here:
 	\url{https://docs.oracle.com/javase/7/docs/api/java/lang/Object.html}.}
 
-Java-style hashcode access can be used to track values that are expensive
-to compute and not known until runtime on the one hand, but immutable
-and deterministic on the other.
+Java-style lazy scalar initialization can be used to track values that
+are expensive to compute and not known until runtime on the one hand,
+but immutable and deterministic on the other.
 A natural way to handle this situation is to have each access check
 to see if the desired value has already been computed, and, if not,
 compute the value and store it for later use.
@@ -776,7 +776,7 @@ collectors, e.g. for Java, are often implemented in C++.
 				&  Y & \x &   Y  &  y &  y &  y &  \x &  Y \\
 	Unidirectional Data Flow (Section~\ref{sec:Unidirectional Data Flow})
 				&  Y &  Y &   Y  & \x & \x & \x &  \x &  Y \\
-	Java-Style Hashcode Access (Section~\ref{sec:Java-Style Hashcode Access})
+	Java-Style Lazy Scalar Initialization (Section~\ref{sec:Java-Style Lazy Scalar Initialization})
 				&  Y &  Y &   Y  &  N &  N &  Y &  \x & \x \\
 	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
 				&  Y &  Y &   Y  &  Y & \x & \x &   Y &  y \\
@@ -831,7 +831,7 @@ The attributes are as follows:
 	values that read returns.
 	An important special case is when all the writers are storing
 	the same value, as discussed in
-	Section~\ref{sec:Java-Style Hashcode Access}.
+	Section~\ref{sec:Java-Style Lazy Scalar Initialization}.
 	Another important special case is where readers take one
 	action if the value is (say) zero and another for any
 	non-zero value, and all concurrent writers will write
