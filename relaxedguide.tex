@@ -713,8 +713,13 @@ data~\cite{Andrews91textbook}.
 The idea is that the iterative convergence tests correct any small errors
 due to accessing data from some other iteration.
 
-In theory, these algorithms are subject to OOTA and RFUB behaviors, however,
-in practice, current implementations avoid such behaviors.
+In theory, these algorithms are subject to OOTA and RFUB behaviors.
+For example, one thread might speculate a NaN\footnote{
+	IEEE floating point ``not a number''.},
+which might result in a store of that NaN which might in turn justify
+some other thread's speculation of a NaN, which could finally justify
+the first thread' initial speculation.
+However, in practice, current implementations avoid such behaviors.
 
 \subsection{Garbage Collection}
 \label{sec:Garbage Collection}
