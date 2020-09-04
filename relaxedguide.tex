@@ -776,6 +776,8 @@ collectors, e.g. for Java, are often implemented in C++.
 				&  Y & \x &   Y  &  y &  y &  y &  \x &  Y \\
 	Unidirectional Data Flow (Section~\ref{sec:Unidirectional Data Flow})
 				&  Y &  Y &   Y  & \x & \x & \x &  \x &  Y \\
+	Reentrant Mutex (Section~\ref{sec:Owner Field for Re-Entrant Mutex})
+				&  Y &  N &   Y  & \x & \x & \x &   Y &  N \\
 	Java-Style Lazy Scalar Initialization (Section~\ref{sec:Java-Style Lazy Scalar Initialization})
 				&  Y &  Y &   Y  &  N &  N &  Y &  \x & \x \\
 	Chaotic Relaxation (Section~\ref{sec:Chaotic Relaxation})
