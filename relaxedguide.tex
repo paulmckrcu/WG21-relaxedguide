@@ -276,9 +276,31 @@ fence instructions emitted for the release stores.
 
 In many cases, other ordered atomic operations may be substituted for
 the \co{atomic_thread_fence()} operations.
+For example, \co{synchronize_rcu()}
+(also known as \co{rcu_synchronize()} in recent C++ working papers) implies
+the semantics of \co{atomic_thread_fence(memory_order_acqrel)}.
+In addition, thread creation and thread join provide the ordering
+semantics of:
+
+\begin{itemize}
+\item	\co{atomic_thread_fence(memory_order_release)} for thread creation.
+\item	\co{atomic_thread_fence(memory_order_acquire)} for the initialization of the
+	corresponding thread.
+\item	\co{atomic_thread_fence(memory_order_release)} for the termination of the
+	corresponding thread.
+\item	\co{atomic_thread_fence(memory_order_acquire)} for the join operation
+	of the corresponding thread.
+\end{itemize}
+
+It is of course more conventional to consider thread creation to
+synchronize with the created thread and thread termination to synchronize
+with the corresponding join operation.
+This leads to the final example, which is that the shared-fences pattern
+also applies to any pair of calls to library where one synchronizes with
+the other.
 
 In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
-of \co{atomic_thread_fence()}.
+of \co{atomic_thread_fence()} or by synchronizes-with, as the case may be.
 
 \subsection{Atomic Reference-Count Updates}
 \label{sec:Atomic Reference-Count Updates}
