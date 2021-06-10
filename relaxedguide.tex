@@ -441,18 +441,18 @@ RFUB behavior to manifest.
 
 \begin{listing}[tbp]
 \begin{verbatim}
- 1 StatCounter<int> a;
- 2 StatCounter<int> b;
+ 1 StatCounter<unsigned long> a;
+ 2 StatCounter<unsigned long> b;
  3
  4 void thread1()
  5 {
- 6   int r1 = a.readout();
+ 6   unsigned long r1 = a.readout();
  7   b.increase(r1);
  8 }
  9
 10 void thread2()
 11 {
-12   int r2 = b.readout();
+12   unsigned long r2 = b.readout();
 13   a.increase(r2);
 14 }
 \end{verbatim}
