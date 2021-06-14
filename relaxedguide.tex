@@ -71,7 +71,8 @@ Audience: SG1 (Informational)
 	in arbitrary code, but rather as a part of deliberate application
 	of specific concurrency designs.
 	This paper forms an initial catalog of patterns underlying such
-	designs.
+	designs, with an eye towards identifying bugs in existing code
+	and preventing bugs in new code.
 \end{abstract}
 
 \section{OOTA and RFUB Background}
@@ -95,9 +96,11 @@ RFUB behaviors.
 Perhaps agreement on these points will be reached, but in the meantime,
 \co{memory_order_relaxed} use is increasing, and thus an increasing need
 to identify known-safe usage patterns.
-In the best case, these usage patterns might be automatically recognized
+In the best case, these usage patterns might be automatically checked
 in existing code, but at a minimum we hope that this list will be
 useful to code reviewers.
+Either way, the goals are to identify bugs in existing code and to
+help avoid bugs in new code.
 
 This paper is a first step toward such a set of patterns.
 
