@@ -197,6 +197,9 @@ In short, although any non-racing access to an atomic object may be
 relaxed, strict C++ counter-intuitively classifies many access patterns
 as racy.
 
+These patterns can be at least partially checked using data-race
+detectors, both static and runtime.
+
 \subsubsection{Initialization and Cleanup}
 \label{sec:Initialization and Cleanup}
 
@@ -245,6 +248,13 @@ Note well that a group of single-location data structures might well
 interact in a way that could raise the spectre of OOTA or RFUB.
 As before, design review should therefore pay careful attention to
 information flow.
+
+These patterns can be checked by verifying that no store to another shared
+variable is affected by the value of the single-location data structure,
+unless that value can be shown not to affect that same single-location
+data structure, for example, if that other shared variable is part of
+a unidirectional data flow
+(see Section~\ref{sec:Unidirectional Data Flow}).
 
 \subsection{Shared Fences}
 \label{sec:Shared Fences}
@@ -305,6 +315,10 @@ the other.
 In this design pattern, OOTA and RFUB behaviors are ruled out by the semantics
 of \co{atomic_thread_fence()} or by synchronizes-with, as the case may be.
 
+This pattern can in theory be checked by verifying that all accesses
+are associated with a fence, however, current checker technology likely
+requires that the associated fence be explicitly called out.
+
 \subsection{Atomic Reference-Count Updates}
 \label{sec:Atomic Reference-Count Updates}
 
@@ -329,6 +343,9 @@ throughout.\footnote{
 	its last reference until after joining with its child threads,
 	then those child threads may use relaxed decrements to release
 	their final reference.}
+
+This pattern can be checked in conjunction with lock dependency checkers
+such as the Linux kernel's lockdep facility~\cite{JonathanCorbet2006lockdep}.
 
 We suspect that this is an example of a more general class of patterns,
 but other examples of such a class do not immediately come to mind.
@@ -366,6 +383,9 @@ Section~\ref{sec:Single-Location Data Structures}.
 Additional examples are presented by
 Sinclair et al.~\cite{Sinclair:2017:CAR:3079856.3080206}.
 
+This pattern can be checked by verifying that the values from the relaxed
+loads propagate only to a CAS operation.
+
 \subsubsection{Sequence Locking}
 \label{sec:Sequence Locking}
 
@@ -395,6 +415,12 @@ to the filesystem tree that would otherwise confuse this
 traversal~\cite{NeilBrown2015PathnameLookup,NeilBrown2015RCUwalk}.
 Such confusion could result is a number of anomalies, including successful
 lookup of paths that never actually existed.
+
+This pattern can be checked by enlisting the aid of lock dependency
+checkers to verify that the access is within the scope of a sequence
+lock reader.
+Checking that the value does not leak out of that sequence lock is
+more difficult.
 
 \subsection{Unidirectional Data Flow}
 \label{sec:Unidirectional Data Flow}
@@ -684,6 +710,9 @@ consuming it.
 
 Note well that this design pattern is outside of the current standard.
 
+All of these patterns can be checked by looking for cycles in a dataflow
+that has been marked unidirectional.
+
 \subsection{Java-Style Lazy Scalar Initialization}
 \label{sec:Java-Style Lazy Scalar Initialization}
 
@@ -728,6 +757,9 @@ Therefore, this pattern might not be helpful when the immutable and
 deterministic values are linked data structures, but it is often used
 for scalar values.
 
+This pattern can be checked by looking for the check-compute-store
+pattern of accesses.
+
 \subsection{Chaotic Relaxation}
 \label{sec:Chaotic Relaxation}
 
@@ -745,6 +777,8 @@ which might result in a store of that NaN which might in turn justify
 some other thread's speculation of a NaN, which could finally justify
 the first thread' initial speculation.
 However, in practice, current implementations avoid such behaviors.
+
+How to check this pattern?
 
 \subsection{Garbage Collection}
 \label{sec:Garbage Collection}
@@ -771,6 +805,8 @@ collectors, e.g. for Java, are often implemented in C++.
 % speculatively reads a non-pointer, and thinks it's a pointer, it may write
 % random locations, potentially justifying the bad speculation.
 % @@@ I was afraid of that...
+
+How can this pattern be checked?
 
 \section{Attributes of Relaxed Design Patterns}
 \label{sec:Attributes of Relaxed Design Patterns}
