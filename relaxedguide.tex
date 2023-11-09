@@ -75,27 +75,232 @@ Audience: SG1 (Informational)
 	and preventing bugs in new code.
 \end{abstract}
 
-\section{OOTA and RFUB Background}
-\label{sec:OOTA and RFUB Background}
+\section{Background}
+\label{sec:Background}
 
-There has been considerable work done on OOTA and
-RFUB~\cite{Boehm:2014:OGA:2618128.2618134,PaulEMcKenney2016OOTA,Lahav:2017:RSC:3062341.3062352,Sinclair:2017:CAR:3079856.3080206,HansBoehm2019OOTArevisitedAgain,MarkBatty2019ModularRelaxedDependenciesOOTA}.
-This work has taken place over many years, and builds on prior work
-in the Java community.\footnote{
-	See for example the infamous ``Causality Test Cases''
-	(\url{http://www.cs.umd.edu/~pugh/java/memoryModel/unifiedProposal/testcases.html}).}
+\subsection{Memory Ordering Strength and Expense}
+\label{sec:Memory Ordering Strength and Expense}
 
+C++ atomic operations are sequentially consistent by default.
+In programs that use only sequentially consistent atomic operations,
+these atomics enjoy mathematically appealing interleaving semantics.
+However, no computer system in common use in the year 2023 provides
+sequential consistency at the hardware level, not even relatively
+strongly ordered systems such as x86.
+This means that sequentially consistent atomics can be quite expensive,
+and especially on weakly ordered systems such as ARM and IBM Power.
+Furthermore, a great many use cases in real-world software do not
+require sequentially consistent atomics, in fact, the much lower-overhead
+release/acquire ordering suffices in a great many situations.
+
+For this reason, C++ provides \co{memory_order} \co{enum} values to
+allow the user to control the strength of individual atomic operations.
+The \co{memory_order_release} and \co{memory_order_acquire} values
+provide the aforementioned release-acquire ordering.
+
+But most relevant to this document, \co{memory_order_relaxed} allows
+arbitrary reordering of accesses to distinct locations.
+With the exception of the unlamented Itanium CPU family, aligned and
+machine-word-sized \co{memory_order_relaxed} loads and stores compile
+to unadorned load and store instructions, providing complete control,
+excellent efficiency, and stunning scalability.
+
+And in practice, \co{memory_order_relaxed} accesses provide well-understood
+ordering properties, which has led to them being heavily used.
+Unfortunately, in theory \co{memory_order_relaxed} accesses are subject
+to OOTA.
+RFUB can occur very rarely in practice, and there is some debate as to
+whether this is acceptable.
+
+These issues are discussed in the following section.
+
+\subsection{OOTA and RFUB}
+\label{sec:OOTA and RFUB}
+
+There has been considerable work done on OOTA and RFUB over many years,
+building on prior work in the Java community, perhaps best exemplified
+by the infamous ``Causality Test Cases''.\footnote{
+	\url{http://www.cs.umd.edu/~pugh/java/memoryModel/unifiedProposal/testcases.html}.}
 There has long been hope that additional research effort will identify
 a model of OOTA that all can live with, for example, on the part of Paul,
 and that everyone would come to appreciate the relative simplicity of
 strengthening \co{memory_order_relaxed} to forbid prior reads to be
-reordered with later writes, for example, on the part of Hans.
-In addition, although there is general agreement that OOTA behaviors
-must be forbidden, there is some debate on the need to forbid
-RFUB behaviors.
-Perhaps agreement on these points will be reached, but in the meantime,
-\co{memory_order_relaxed} use is increasing, and thus an increasing need
-to identify known-safe usage patterns.
+reordered with later writes, for example, on the part of
+Hans~\cite{Boehm:2014:OGA:2618128.2618134,HansBoehm2019OOTArevisitedAgain,Lahav:2017:RSC:3062341.3062352}.
+And progress has been made on both fronts.
+
+On the additional-research front, we now have methods of distinguishing
+between OOTA on the one hand and simple reordering on the other.
+Unfortunately, one method requires per-scenario
+creativity~\cite{PaulEMcKenney2016OOTA},
+while others have not as yet been looked upon with favor by compiler
+implementers~\cite{Lahav:2017:RSC:3062341.3062352,Sinclair:2017:CAR:3079856.3080206,Lee:10.1145/3385412.3386010,MarkBatty2019ModularRelaxedDependenciesOOTA}.
+Backwards-propagating undefined behavior can be especially
+troublesome~\cite{DavidGoldblatt2019NoElegantOOTAfix},
+but there proposals that this be
+restricted~\cite{HansBoehm2020UBalternatives}.
+Perhaps such restrictions might eliminate some of the more troublesome
+examples of OOTA.
+
+On the reads-before-writes front, there are some indications that newer
+weakly ordered hardware incurs reduced penalties for ordering relaxed
+reads before relaxed writes, at least for low-end and high-end systems.
+However, middle-end systems still incur significant penalties.
+This has led to renewed suggestions that a new \co{memory_order_load_store}
+member be added to the \co{memory_order} \co{enum}.
+It has also led to a renewed proposal that \co{memory_order_relaxed}
+be strengthened so as to prohibit reordering of prior loads and subsequent
+stores~\cite{LukeGeeson2023TightenRelaxed},
+however, this proposal was not universally
+loved~\cite{RichardGrisenthwaite2023TightenRelaxedJustSayNo}.
+
+A further complication is that although there is general agreement that
+OOTA behaviors must be forbidden, there is some debate on the need to
+forbid RFUB behaviors.
+Some of those who believe that RFUB behaviors should be allowed
+(for example, Paul) argue that the scenarios where RFUB can occur
+are contrived and with no known production use cases.
+There is general agreement that simple reordering should be allowed, as
+it occurs in practice in scenarios that are both useful and commonplace.
+
+\subsection{OOTA Examples}
+\label{sec:OOTA Examples}
+
+This section looks at examples of simple reordering, OOTA, and RFUB.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> x(0);
+ 2 atomic<int> y(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   unsigned long r1 = x.load(memory_order_relaxed);
+ 7   y.store(r1, memory_order_relaxed);
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   unsigned long r2 = y.load(memory_order_relaxed);
+13   x.store(42, memory_order_relaxed);
+14 }
+\end{verbatim}
+\caption{Simple Reordering}
+\label{lst:Simple Reordering}
+\end{listing}
+
+Listing~\ref{lst:Simple Reordering}
+shows an example of simple reordering.
+Both the compiler and the CPU are within their rights to reorder
+lines~12 and~13, in which case the following sequence of events
+will result in all of \co{x}, \co{y}, \co{r1}, and \co{r2} having
+the value 42:
+
+\begin{enumerate}
+\item	Line~13 stores 42 to \co{x}.
+\item	Line~6 loads 42 from \co{x} into \co{r1}.
+\item	Line~7 stores \co{r1}, and thus 42, to \co{y}.
+\item	Line~12 loads 42 from \co{y} to \co{r2}.
+\end{enumerate}
+
+It is strongly and generally agreed that this simple reordering be
+allowed.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> x(0);
+ 2 atomic<int> y(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   unsigned long r1 = x.load(memory_order_relaxed);
+ 7   y.store(r1, memory_order_relaxed);
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   unsigned long r2 = y.load(memory_order_relaxed);
+13   x.store(r2, memory_order_relaxed);
+14 }
+\end{verbatim}
+\caption{Simple OOTA}
+\label{lst:Simple OOTA}
+\end{listing}
+
+Listing~\ref{lst:Simple OOTA} shows an OOTA example that should be
+prohibited.
+where where all of \co{x}, \co{y}, \co{r1}, and \co{r2} have final values
+of 42:
+In actual hardware, this prohibition is enforces by TSO ordering in
+strongly ordered systems and by data dependency ordering in weakly
+ordered systems.
+Compilers cannot store something until after they load it, which
+results in instructions being emitted such that the hardware enforcement
+applies.
+The need to prohibit simple OOTA is one reason why compiler-based
+value speculation optimizations are frowned upon.
+
+@@@ Hans, I omitted your array-based setup, as this involves an
+out-of-bounds array reference, which is itself UB.
+If this example is needed, please help me understand the point that
+it is making.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> x(0);
+ 2 atomic<int> y(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   unsigned long r1 = x.load(memory_order_relaxed);
+ 7   y.store(r1, memory_order_relaxed);
+ 8 }
+ 9
+10 void thread2()
+11 {
+12   bool assigned_42 = false;
+13   unsigned long r2 = y.load(memory_order_relaxed);
+14   if (r2 != 42) {
+15     assigned_42 = true;
+16     r2 = 42;
+17   }
+18   x.store(r2, memory_order_relaxed);
+19 }
+\end{verbatim}
+\caption{Simple RFUB}
+\label{lst:Simple RFUB}
+\end{listing}
+
+Listing~\ref{lst:Simple RFUB}
+shows a simple example of RFUB, which again means ``read from untaken
+branch''.
+The following sequnece of events will result in all of \co{x}, \co{y},
+\co{r1}, and \co{r2} having the value 42:
+
+\begin{enumerate}
+\item	The compiler notices that at line~17, the value of \co{r2}
+	is always 42.
+\item	The compiler thus substitutes the value 42 for \co{r2} in
+	line~18.
+\item	Both the compiler and the CPU are within their rights to reorder
+	lines~13 and~18.
+\item	Line~18 stores 42 to \co{x}.
+\item	Line~6 loads 42 from \co{x} into \co{r1}.
+\item	Line~7 stores \co{r1}, and thus 42, to \co{y}.
+\item	Line~13 loads 42 from \co{y} to \co{r2}.
+\item	Because \co{r2} is equal to 42, lines~15 and~16 are never
+	executed, even though it was exactly these lines of code
+	that justified the above compiler optimizations.
+\end{enumerate}
+
+Many concurrency experts believe that RFUB should be allowed.
+
+\subsection{Classification of Patterns}
+\label{sec:Classification of Patterns}
+
+Perhaps agreement on all of these points will be reached, but in the
+meantime, \co{memory_order_relaxed} use is increasing, and thus an
+increasing need to identify known-safe usage patterns.
 In the best case, these usage patterns might be automatically checked
 in existing code, but at a minimum we hope that this list will be
 useful to code reviewers.
@@ -120,6 +325,10 @@ strict C++, but all of them are safe in full C++.
 Many of these patterns are taken from Hans's \co{memory-model-design}
 posting on September 4, 2018.\footnote{
 	Message-ID: \co{<CAMOCf+jchGw6DeE2NyCJA3wfFbNH-WFn59JruZPSWt9_jPW9NQ@mail.gmail.com>}.}
+
+In the examples, \co{x} and \co{y} denote potentially shared locations,
+while \co{r1} and \co{r2} denote local variables (``registers'') whose
+addresses are not taken.
 
 \subsection{Non-Racing Accesses}
 \label{sec:Non-Racing Accesses}
@@ -196,6 +405,39 @@ by the normative encouragement in that same standard.
 In short, although any non-racing access to an atomic object may be
 relaxed, strict C++ counter-intuitively classifies many access patterns
 as racy.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 if (!x_init.load(memory_order_acquire)) {
+ 2   lock_guard<mutex> _(x_init_mtx);
+ 3   if (!x_init.load(memory_order_relaxed)) {
+ 4     initialize(&x);
+ 5     x_init.store(true, memory_order_release);
+ 6   }
+ 7 }
+\end{verbatim}
+\caption{Double-Checked Locking}
+\label{lst:Double-Checked Locking}
+\end{listing}
+
+Relaxed atomics can nevertheless be useful for non-racing accesses
+in real-life situations, as can be seen in the double-checked
+locking example shown in
+Listing~\ref{lst:Double-Checked Locking}.
+Line~1 uses an acquire load from \co{x_init} to check whether
+initialization is needed, in which case line~2 acquires \co{mutex}
+using an anonymous \co{lock_guard} (anonymity being designated by the
+underscore where a local-variable name would be expected).
+Once this lock is held, line~3 uses a relaxed load to recheck \co{x_init}
+to see whether initialization is still needed.
+A relaxed load works here because holding the lock prevents other
+threads from storing to \co{x_init}.
+Line~4 carries out the initialization, and line~5 updates \co{x_init}
+to indicate that initialization is complete.
+
+When the acquire load on line~1 returns the value \co{true}, that
+load synchronizes with the release store on line~5, guaranteeing
+that any code following line~7 sees the results of that initialization.
 
 These patterns can be at least partially checked using data-race
 detectors, both static and runtime.
@@ -361,6 +603,22 @@ to occasionally return random bits because the value is checked by
 some later operation.
 In such cases, the load can be a relaxed load.
 
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 unsigned long expected = x.load(memory_order_relaxed);
+ 2 while (!x.compare_exchange_weak(expected, f(expected))
+ 3   continue;
+\end{verbatim}
+\caption{Untrusted Load Checked by CAS}
+\label{lst:Untrusted Load Checked by CAS}
+\end{listing}
+
+Listing~\ref{lst:Untrusted Load Checked by CAS}
+demonstrates this pattern.
+If misordering, OOTA, or RFUB were to cause line~1 to return a bogus
+value, then the ~\co{compare_exchange_weak()} on line~2 would fail,
+implicitly re-loading the value and retrying.
+
 \subsubsection{Pre-Load for Compare and Swap}
 \label{sec:Pre-Load for Compare and Swap}
 
@@ -468,6 +726,43 @@ Similar to the independent input data discussed in the preceding section,
 the key point is that the concurrent-computation portion of application
 modifies but does not reference this data, and that there are no
 object-to-object consistency constraints.
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> s1(0);
+ 2 atomic<int> s2(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   int s1 = get_ext_state(1);
+ 7   int s2 = get_ext_state(2);
+ 8   cs1.store(reduce_state(s1), memory_order_relaxed);
+ 9   cs2.store(reduce_state(s2), memory_order_relaxed);
+10 }
+11
+12 void thread2()
+13 {
+14   int c = compute_ctl(cs1.load(memory_order_relaxed,
+15                       cs2.load(memory_order_relaxed));
+16   set_ext_ctl(c);
+17 }
+\end{verbatim}
+\caption{Unidirectional I/O Data Flow}
+\label{lst:Unidirectional I/O Data Flow}
+\end{listing}
+
+Listing~\ref{lst:Unidirectional I/O Data Flow}
+combines item~2 from the lists in
+Sections~\ref{sec:Independent Output Data}
+and~\ref{sec:Independent Input Data}.
+The \co{thread1()} input data flows from the \co{get_ext_state()} functions
+through the \co{reduce_state()} functions into the \co{cs1} and \co{cs2}
+shared variables.
+The \co{thread2()} output data flows from these same \co{cs1} and \co{cs2}
+shared variables though \co{compute_ctl()} and finally is output
+by \co{set_ext_ctl()}.
+The data flow is unidirections from input to output, so no OOTA cycles
+can form.
 
 \subsubsection{Statistical Counters}
 \label{sec:Statistical Counters}
@@ -585,17 +880,47 @@ This pattern is first analyzed for full C++, and then for strict C++.
 Spoiler warning:  There is reason to believe that this pattern works
 in full C++, but not in strict C++.
 
-A re-entrant exclusive mutex must track its owner in order to avoid
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 class my_reentrant_mutex {
+ 2   std::mutex m;
+ 3   // Writes of owner are protected by m.
+ 4   // Only owner writes or clears its id.
+ 5   std::atomic<std::thread::id> owner; // id() if not held
+ 6   // Protected by m.
+ 7   int count;  // Held count-1 times by owner
+ 8   . . .
+ 9 }
+10
+11 void my_reentrant_mutex::lock() {
+12   std::thread::id me = std::this_thread::get_id();
+13   // No other thread can change whether owner == me.
+14   if (owner.load(memory_order_relaxed) == me) {
+15     ++mutex.count; // Done; reacquired the lock.
+16   } else {
+17     ... // Acquire m, leaving count == 0
+18     owner.store(me, memory_order_relaxed);
+19   }
+20 }
+\end{verbatim}
+\caption{Re-Entrant Mutex Owner Field}
+\label{lst:Re-Entrant Mutex Owner Field}
+\end{listing}
+
+Pseudo-code for a re-entrant exclusive mutex is shown in
+Listing~\ref{lst:Re-Entrant Mutex Owner Field}.
+Each mutex must track its owner (\co{owner} on line~5) in order to avoid
 self-deadlock when the owner re-acquires a mutex that it already holds.
-This owner field is updated only while the mutex is held, and its value
-is used only to compare for equality to the current thread's ID.
+This owner field is updated only while the mutex is held (line~18), and
+its value is used only to compare for equality to the current thread's ID.
 Before releasing the mutex, the owner writes a special ID to the owner
 field that is guaranteed not to match the ID of any thread.
 Other threads can access the owner concurrently with the owner's
 update, so the owner field must be atomic in order to avoid data races.
-Of course, a nesting counter must also be used in order identify the
-outermost lock-release operation, however this counter is accessed only
-by the thread currently holding the lock.
+Of course, a nesting counter (\co{count} on line~7) must also be used
+in order identify the outermost lock-release operation, however this
+counter is accessed only by the thread currently holding the lock
+(line~15).
 Therefore, if the lock works correctly, exclusive access will be provided
 to the nesting counter, as is required.
 Those wishing to produce a proof of correctness are encouraged to try
@@ -723,12 +1048,46 @@ It applies because this portion of Java is written in C++.\footnote{
 	Documented here:
 	\url{https://docs.oracle.com/javase/7/docs/api/java/lang/Object.html}.}
 
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> x(0);
+ 2 atomic<int> y(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   long r1 = x.load(memory_order_relaxed);
+ 7   if (r1 == 0) {
+ 8     r1 = pure_function();
+ 9     x.store(r1, memory_order_relaxed);
+10   }
+11   // r1 is now trusted
+12   if (is_bad(r1))
+13     bad_behavior();
+14 }
+15
+16 void thread2()
+17 {
+18   long r2 = y.load(memory_order_relaxed);
+19   if (r2 == 0) {
+20     r2 = pure_function();
+21     y.store(r2, memory_order_relaxed);
+22   }
+23   // r2 is now trusted
+24   if (is_bad(r2))
+25     bad_behavior();
+26 }
+\end{verbatim}
+\caption{Lazy Scalar Initialization}
+\label{lst:Lazy Scalar Initialization}
+\end{listing}
+
 Java-style lazy scalar initialization can be used to track values that
 are expensive to compute and not known until runtime on the one hand,
 but immutable and deterministic on the other.
 A natural way to handle this situation is to have each access check
 to see if the desired value has already been computed, and, if not,
-compute the value and store it for later use.
+compute the value and store it for later use, as shown in
+Listing~\ref{lst:Lazy Scalar Initialization}.
 Of course, it is possible that two threads might concurrently load
 the initial not-yet-computed value, in which case, both threads
 will compute the value and store it.
@@ -866,6 +1225,8 @@ How can this pattern be checked?
 
 Table~\ref{tab:Attributes of Categories of Relaxed Design Patterns}
 shows attributes of design patterns.
+Cell with ``Y'' indicate ``yes'', with ``S'' indicate ``sometimes'',
+and otherwise indicate ``no''.
 Please note that this table assumes that back-propagating self-justifying
 undefined behavior is prevented.
 The attributes are as follows:
@@ -924,6 +1285,49 @@ The attributes are as follows:
 	their respective sections.
 \end{enumerate}
 
+The key attribute that renders an idiom potentially unsafe is
+the loading of an atomic value with a relaxed load, and then
+relying on that value for correctness, for example, by:
+
+\begin{enumerate}
+\item	Using it to determine the value stored into another atomic, or
+\item	Relying on it to avoid disastrous misbehavior.
+\end{enumerate}
+
+\begin{listing}[tbp]
+\begin{verbatim}
+ 1 atomic<int> x(0);
+ 2 atomic<int> y(0);
+ 3
+ 4 void thread1()
+ 5 {
+ 6   unsigned long r1 = x.load(memory_order_relaxed);
+ 7   if (is_bad(r1)
+ 8     bad_behavior();
+ 9 }
+10
+11 void thread2()
+12 {
+13   unsigned long r2 = y.load(memory_order_relaxed);
+14   if (is_bad(r2)
+15     bad_behavior();
+16 }
+\end{verbatim}
+\caption{Canonical Unsafe Pattern}
+\label{lst:Canonical Unsafe Pattern}
+\end{listing}
+
+In this last, the potential unsafety normally stems from having
+generated undefined behavior.
+But this requires the loads to read a bad value, which in practice
+normally cannot happen in the absence of that bad value actually being
+explicitly stored somewhere.
+The exception occurs in case of backwards-propagating undefined behavior.
+If the \co{bad_behavior()} functions on lines~8 and~15 invoke undefined
+behavior, and if that undefined behavior can back-propagate, then that
+undefined behavior can justify the value loaded that resulted in the
+call to the \co{bad_behavior()} function in the first place.
+
 \section{Marking of Relaxed Design Patterns}
 \label{sec:Marking of Relaxed Design Patterns}
 
@@ -971,6 +1375,16 @@ More ideation and discussion is needed on this topic.
 
 \section{Concluding Remarks}
 \label{sec:Concluding Remarks}
+
+Use of \co{memory_order_relaxed} can be tricky because we do not yet
+have an efficient way to formally define the boundaries of OOTA and
+RFUB.
+Important \co{memory_order_relaxed} use cases work in practice, but
+some have no known precise correctness argument.
+We define ``strict C++'' as that portion of the standard excluding
+the vague normative encouragement to avoid OOTA.
+The good news is that many common \co{memory_order_relaxed} use cases
+are demonstrably correct even in strict C++.
 
 This paper starts the work of classifying known-safe design patterns
 involving \co{memory_order_relaxed}.
@@ -1074,8 +1488,17 @@ accesses on lines~5, 12, and~17.
 Again, code reviewers should view relaxed stores of pointers to newly
 allocated objects with great suspicion.
 
+\section{History}
+\label{sec:History}
+
+This is a revision of 
+``D2055R1: A Relaxed Guide to \co{memory_order_relaxed}''
+based on discussions at the 2020 Prague meeting and also a
+presentation\footnote{
+	\url{https://docs.google.com/presentation/d/1HT-Gaj5oRT5VArx_4bVyos3y6vCkxubx1rF4Nqo4n64/edit?usp=sharing}}
+to CPPCON 2020.
 
 \bibliographystyle{plain}
-\bibliography{bib/RCU,bib/WFS,bib/hw,bib/os,bib/parallelsys,bib/patterns,bib/perfmeas,bib/refs,bib/syncrefs,bib/search,bib/swtools,bib/realtime,bib/TM,bib/standards}
+\bibliography{bib/RCU,bib/WFS,bib/hw,bib/os,bib/parallelsys,bib/patterns,bib/perfmeas,bib/refs,bib/syncrefs,bib/search,bib/swtools,bib/realtime,bib/TM,bib/standards,bib/memorymodel.bib}
 
 \end{document}
