@@ -41,7 +41,7 @@
 \floatname{listing}{Listing}
 
 \begin{document}
-\title{D2055R1: A Relaxed Guide to \co{memory_order_relaxed}}
+\title{P2055R1: A Relaxed Guide to \co{memory_order_relaxed}}
 
 \newcommand{\co}[1]{\lstinline[breaklines=yes,breakatwhitespace=yes]{#1}}
 
@@ -51,7 +51,7 @@ David Goldblatt\\\email{davidtgoldblatt@gmail.com} \and
 Paul E.~McKenney\\\email{paulmck@kernel.org} \and
 The Indefatigible TBD
 }
-\date{January 12, 2020 (Pre-Prague)}
+\date{April 8, 2024}
 \maketitle{}
 
 Audience: SG1 (Informational)
@@ -232,7 +232,7 @@ Listing~\ref{lst:Simple OOTA} shows an OOTA example that should be
 prohibited.
 where where all of \co{x}, \co{y}, \co{r1}, and \co{r2} have final values
 of 42:
-In actual hardware, this prohibition is enforces by TSO ordering in
+In actual hardware, this prohibition is enforced by TSO ordering in
 strongly ordered systems and by data dependency ordering in weakly
 ordered systems.
 Compilers cannot store something until after they load it, which
@@ -1493,7 +1493,7 @@ allocated objects with great suspicion.
 \label{sec:History}
 
 This is a revision of 
-``D2055R1: A Relaxed Guide to \co{memory_order_relaxed}''
+``P2055R0: A Relaxed Guide to \co{memory_order_relaxed}''
 based on discussions at the 2020 Prague meeting and also a
 presentation\footnote{
 	\url{https://docs.google.com/presentation/d/1HT-Gaj5oRT5VArx_4bVyos3y6vCkxubx1rF4Nqo4n64/edit?usp=sharing}}
